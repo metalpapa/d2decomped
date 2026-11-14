@@ -31,6 +31,7 @@ struct GameMenu {
     int menu = 0, sel = 0;                 // 0x7bc93c's menu, 0x7bc938
     bool held = false, drag = false;       // the left button / a slider (0x7bc948 / 0x7bc94c)
     int last_x = -1, last_y = -1;          // where the mouse was (0x7bc980 / 0x7bc984)
+    bool just_shown = false;               // TrimUI: the first frame's cursor jump (the pad's) must not hover-select a row
     int pent = 0;                          // pentspin's frame (0x7bc944)
     std::uint32_t pent_ms = 0;
     std::array<std::array<int, 8>, 5> value{};   // each row's value, by its LoD row

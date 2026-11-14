@@ -168,6 +168,7 @@ void GameMenu::show(int which) {
     menu = which;
     sel = which == 0 ? 1 : int(rows().size()) - 1;   // main menu: the TrimUI "Save" row
     held = drag = false;
+    just_shown = true;
 }
 
 std::vector<int> GameMenu::rows() const {
@@ -319,6 +320,7 @@ GameMenu::Action GameMenu::input(const Scene& scene, Audio& audio, const Mouse& 
         if (held && hit(mouse.y) == sel) action = activate(scene, audio);
         held = drag = false;
     }
+    if (just_shown) { just_shown = false; last_x = mouse.x; last_y = mouse.y; }
     if (mouse.x != last_x || mouse.y != last_y) {          // FUN_0047e3d0: a move drags or hovers
         last_x = mouse.x; last_y = mouse.y;
         if (held) slide(scene, audio, mouse.x, mouse.y);
