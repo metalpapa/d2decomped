@@ -782,6 +782,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         d2d::userdir::Config cfg;
         d2d::userdir::load_cfg(town.cfg_file, cfg);
         town.hireling_hint = cfg["popup_hireling"] != "1";   // FUN_004939b0 reads the registry's PopupHireling each game
+        town.automap_items = cfg["automap_items"] == "1";
     }
     if (g_click_keys) town.click_keys = g_click_bindings;
     if (!g_no_save) town.key_dir = save_dir;                 // <name>.key and default.key beside the saves, as game.exe keeps them

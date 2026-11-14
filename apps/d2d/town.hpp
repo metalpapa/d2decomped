@@ -534,6 +534,7 @@ struct Town {
     void open_assignment(int skill);
     void close_assignment();
     [[nodiscard]] std::string pick_label(const PadPick& pick) const;
+    void use_thing(const PadPick& pick, const Send& out) const;   // Interact, or the click that takes a warp (ids <= -4000)
     void apply_skill_pad(PadPlayer& player_pad, const UnitState& unit, bool dead, bool field, std::string_view name, int right_skill,
                          bool expansion, const pad::Actions& actions, const Send& out);
     [[nodiscard]] int portal_tome(std::string_view name, bool charged = true) const;
@@ -593,6 +594,8 @@ struct Town {
     bool  player_walked = false;           // `walking` as of the last frame
     bool alt_held = false;                 // devctl `debug alt on`: "Show Items" held
     bool pad_show_items = false;           // a skill slot bound to Show Items is held this frame
+    bool automap_items = false;            // TrimUI: d2d.cfg automap_items=1, the automap key also shows/hides ground item names
+    bool items_sticky = false;             // item names on until the automap key closes the map
     StateClock state_clock;                // when each unit's states were first seen (their cast overlays)
     std::vector<d2d::rules::OverlayClock> alert_clocks;
     const Level* alert_level = nullptr;     // reset on a level change and on enter (Town is reused between games)

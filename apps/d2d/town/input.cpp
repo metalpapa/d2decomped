@@ -160,6 +160,17 @@ auto Town::pad_pick(const PadPlayer& player_pad, const UnitState& unit, bool use
         for (const auto& corpse : view.corpses) things.push_back({ -3000 - corpse.which, corpse.x, corpse.y });
         if (const int pick = pad::pick_target(hero_x, hero_y, face_x, face_y, things, -1, pad::Aim{ 4.5f, 4.5f, -0.2f }); pick >= 0)
             return { PadPick::kThing, things[std::size_t(pick)].id, things[std::size_t(pick)].x, things[std::size_t(pick)].y };
+        if (level) {   // a cave mouth or stairs: the point inside the warp's Select box that a mouse click would hit
+            std::vector<pad::Candidate> exits;
+            for (std::size_t i = 0; i < level->warps.size(); ++i) exits.push_back({ -4000 - int(i), level->warps[i].unit_x, level->warps[i].unit_y });
+            if (const int pick = pad::pick_target(hero_x, hero_y, face_x, face_y, exits, -1, pad::Aim{ 6.f, 6.f, -0.2f }); pick >= 0) {
+                const auto& warp = level->warps[std::size_t(pick)];
+                const int unit_x = int(std::floor(warp.unit_x * 5)), unit_y = int(std::floor(warp.unit_y * 5));
+                const float pixel_x = float(warp.select[0]) + float(warp.select[2]) / 2, pixel_y = float(warp.select[1]) + float(warp.select[3]) / 2;
+                const float diff = (pixel_x + float((unit_x - unit_y) * 16)) / 80, sum = (pixel_y + float((unit_x + unit_y) * 8)) / 40;   // World::warp_clicked inverted
+                return { PadPick::kThing, exits[std::size_t(pick)].id, (sum + diff) / 2, (sum - diff) / 2 };
+            }
+        }
         return {};
     }
 
@@ -197,7 +208,7 @@ auto Town::pad_act(PadPlayer& player_pad, const UnitState& unit, bool dead, bool
             return;
         }
         if (pick.kind == PadPick::kItem) { out(cmd::Pickup{ pick.id }); return; }
-        if (pick.kind == PadPick::kThing) { out(cmd::Interact{ pick.id }); return; }
+        if (pick.kind == PadPick::kThing) { use_thing(pick, out); return; }
         // Nothing in reach: the left skill swings only with a monster about (in camp A never just walks); the right one always casts (buffs, teleport).
         const bool foe_near = std::ranges::any_of(view.monsters, [&](const auto& foe) { return foe.alive() && !foe.ally_not_interact(*scene, level ? level->id : 0) && std::hypot(foe.unit.x - hero_x, foe.unit.y - hero_y) < 10.f; });
         if (move.alt || (move.attack && foe_near))

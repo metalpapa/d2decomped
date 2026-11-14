@@ -280,7 +280,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
             for (int slot = 0; slot < 16; ++slot)
                 if (fires(slot < 8 ? keys::kSkill1 + slot : keys::kSkill9 + slot - 8)) skill_hotkey(slot, mouse.x, mouse.y);
             if (fires(keys::kShowBelt)) belt_open = !belt_open;
-            if (fires(keys::kAutomap)) automap.open = !automap.open;
+            if (fires(keys::kAutomap)) { automap.open = !automap.open; if (automap_items) items_sticky = automap.open; }
             if (fires(keys::kCharacter)) toggle_character();
             if (fires(keys::kQuestLog)) toggle_quest_log();
             if (key == SDLK_ESCAPE && view.dead && (!view.ghost || view.all_dead) && !game_menu.open) { send(cmd::Resurrect{}); continue; }

@@ -203,7 +203,17 @@ auto Town::present_skill_pad() -> void {
  * Describe a resolved field target for the shared Attack / Use prompt. Use the available monster,
  * loot, NPC or object name, with a generic fallback when no target is resolved.
  */
+/**
+ * Send what A does to a picked thing. A warp (cave mouth, stairs) is taken by a fresh move onto it,
+ * as the mouse's click does; everything else is an Interact.
+ */
+auto Town::use_thing(const PadPick& pick, const Send& out) const -> void {
+    if (pick.id <= -4000) out(cmd::Move{ pick.x, pick.y, true });
+    else out(cmd::Interact{ pick.id });
+}
+
 auto Town::pick_label(const PadPick& pick) const -> std::string {
+    if (pick.kind == PadPick::kThing && pick.id <= -4000) return "Enter";
     if (pick.kind == PadPick::kMonster) {
         const auto found = std::ranges::find(view.monsters, pick.id, &Monster::id);
         if (scene && found != view.monsters.end() && found->type >= 0 && std::size_t(found->type) < scene->monsters.types.size()) {
@@ -376,7 +386,7 @@ auto Town::apply_skill_pad(PadPlayer& player_pad, const UnitState& unit, bool de
     const auto interact = [&]() {
         const PadPick pick = pad_pick(player_pad, unit, true, {}, false);
         if (pick.kind == PadPick::kItem) out(cmd::Pickup{ pick.id });
-        else if (pick.kind == PadPick::kThing) out(cmd::Interact{ pick.id });
+        else if (pick.kind == PadPick::kThing) use_thing(pick, out);
     };
     if (actions.interact_press) interact();
     const auto found = skill_sheets.find(sheet_key(std::string(name)));
@@ -411,7 +421,7 @@ auto Town::apply_skill_pad(PadPlayer& player_pad, const UnitState& unit, bool de
         }
         player_pad.target = -1;
         if (pick.kind == PadPick::kItem) { used = true; out(cmd::Pickup{ pick.id }); return; }
-        if (pick.kind == PadPick::kThing) { used = true; out(cmd::Interact{ pick.id }); return; }
+        if (pick.kind == PadPick::kThing) { used = true; use_thing(pick, out); return; }
         out(cmd::UseSkill{ skill, unit.x + player_pad.face_x * 3.f, unit.y + player_pad.face_y * 3.f, -1, swing, -1 });
     };
     const auto cast = [&](int skill, bool press, bool button_down, bool& used) {
