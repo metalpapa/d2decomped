@@ -43,7 +43,7 @@
 #include <execinfo.h>   // backtrace(), backtrace_symbols_fd() -- crash handler debug aid
 #include <signal.h>     // siginfo_t, sigaction (crash handler needs the fault context)
 #include <unistd.h>     // write(), STDERR_FILENO
-#ifdef __linux__
+#if defined(__linux__) && defined(__aarch64__)
 #include <ucontext.h>   // ucontext_t::uc_mcontext.pc -- the exact faulting instruction
 #endif
 #endif
@@ -1949,7 +1949,7 @@ extern "C" void d2d_crash_handler(int sig, siginfo_t*, void* ucontext_ptr) {
 
     void* frames[64];
     const int count = backtrace(frames, 64);
-#ifdef __linux__
+#if defined(__linux__) && defined(__aarch64__)
     if (ucontext_ptr) {
         const auto* uc = static_cast<ucontext_t*>(ucontext_ptr);
         const unsigned long fault_pc = uc->uc_mcontext.pc;
