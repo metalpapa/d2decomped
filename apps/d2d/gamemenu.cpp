@@ -43,6 +43,13 @@ struct Menu {
 };
 constexpr Row kMain[] = {                          // 0x713044
     { 0, false, "Options", 0, 0, false, {} },
+    // TrimUI-only row (user-requested): save without leaving the game. Not
+    // in game.exe's own menu (it never had a standalone "Save" button) and
+    // needs its own label image once one exists (data\local\UI\ENG\Save.dc6,
+    // a custom patch-layer MPQ override — see d2d.cfg's `patch =`); until
+    // then this row draws with no visible label (text_image finds nothing)
+    // but still works if clicked/selected.
+    { 0, false, "Save", 0, 0, false, {} },
     { 0, false, "Exit", 0, 0, false, {} },
     { 0, false, "ReturnToGame", 0, 0, false, {} },
 };
@@ -159,7 +166,7 @@ GameMenu::GameMenu() {
 
 void GameMenu::show(int which) {
     menu = which;
-    sel = int(rows().size()) - 1;
+    sel = which == 0 ? 1 : int(rows().size()) - 1;   // main menu: the TrimUI "Save" row
     held = drag = false;
 }
 
@@ -231,6 +238,7 @@ GameMenu::Action GameMenu::activate(const Scene& scene, Audio& audio) {
     if (row.type != 0) return kNone;
     Action action = kNone;
     if (row.name == "Options") show(1);                       // 0x47f2a0
+    else if (row.name == "Save") action = kSave;              // TrimUI-only, see kMain
     else if (row.name == "Exit") action = kExit;              // 0x47f2d0
     else if (row.name == "ReturnToGame") action = kClose;     // 0x47f300
     else if (row.name == "SoundOptions") {                    // 0x47f310; the sliders' init 47cdc0 / 47ce10

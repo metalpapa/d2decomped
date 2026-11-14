@@ -25,7 +25,7 @@ std::vector<std::string_view> game_menu_images();
 // ramp. 3D sound, EAX, 3D bias and perspective are off as on a machine
 // without a 3D provider or Glide.
 struct GameMenu {
-    enum Action { kNone, kClose, kExit, kControls };
+    enum Action { kNone, kClose, kExit, kControls, kSave };
     bool open = false;
     bool expansion = true;                 // the video / automap menus' LoD rows (FUN_00408f20)
     int menu = 0, sel = 0;                 // 0x7bc93c's menu, 0x7bc938

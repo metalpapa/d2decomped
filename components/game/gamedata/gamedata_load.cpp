@@ -1714,7 +1714,7 @@ void check_patch_layer(const d2d::mpq::Stack& mpqs) {
 
 }  // namespace
 
-std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path& patch_installer, bool tile_pixels) {
+std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path& patch_installer, bool tile_pixels, std::string_view lang) {
     // MPQ names match case-insensitively (D2DATA.MPQ in Wine prefixes and
     // Linux copies); the install is read in place, never renamed.
     auto find = [&](std::string_view name) { return d2d::install::find_file(data_dir, name); };
@@ -1796,15 +1796,15 @@ std::optional<GameData> open_game_data(const fs::path& data_dir, const fs::path&
         // entry, load all three and query in order (patch → expansion →
         // base).
         game_data.strings = [&] {
-                auto bytes = mpqs.try_read(R"(data\local\LNG\ENG\string.tbl)");
+                auto bytes = mpqs.try_read(std::string(R"(data\local\LNG\)") + std::string(lang) + R"(\string.tbl)");
                 return bytes ? d2d::tbl::Table(*bytes) : d2d::tbl::Table{};
             }();
         game_data.patch_strings = [&] {
-                auto bytes = mpqs.try_read(R"(data\local\LNG\ENG\patchstring.tbl)");
+                auto bytes = mpqs.try_read(std::string(R"(data\local\LNG\)") + std::string(lang) + R"(\patchstring.tbl)");
                 return bytes ? d2d::tbl::Table(*bytes) : d2d::tbl::Table{};
             }();
         game_data.exp_strings = [&] {
-                auto bytes = mpqs.try_read(R"(data\local\LNG\ENG\expansionstring.tbl)");
+                auto bytes = mpqs.try_read(std::string(R"(data\local\LNG\)") + std::string(lang) + R"(\expansionstring.tbl)");
                 return bytes ? d2d::tbl::Table(*bytes) : d2d::tbl::Table{};
             }();
         d2d::log::info("Opened the MPQs and strings ({} ms)", d2d::log::ms() - start_ms);
@@ -1849,8 +1849,8 @@ void load_game_world(GameData& game_data, d2d::mpq::Stack& mpqs, std::uint32_t m
 }
 
 std::optional<GameData> load_game_data(const fs::path& data_dir, const fs::path& patch_installer, std::uint32_t map_seed,
-                                       bool tile_pixels) {
-    auto game_data = open_game_data(data_dir, patch_installer, tile_pixels);
+                                       bool tile_pixels, std::string_view lang) {
+    auto game_data = open_game_data(data_dir, patch_installer, tile_pixels, lang);
     if (!game_data) return std::nullopt;
     try {
         load_game_tables(*game_data, game_data->mpqs);

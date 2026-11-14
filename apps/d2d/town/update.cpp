@@ -399,6 +399,9 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                 d2d::log::warn("d2d.cfg: gamma and contrast not saved");
             game_menu.video_changed = false;
             if (action != GameMenu::kNone) close_game_menu();
+            if (action == GameMenu::kSave) {                 // TrimUI-only row: save, then close like the rest
+                if (const auto why = save(); !why.empty()) d2d::log::warn("Save: {}", why);
+            }
             if (action == GameMenu::kControls) {          // CfgOptions (0x47f400): UI 0xb
                 controls.family = pad_family;
                 controls.pad_extra = pad_controls_page;

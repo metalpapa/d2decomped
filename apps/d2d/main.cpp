@@ -39,6 +39,15 @@
 #include "window.hpp"
 #include "world_view.hpp"
 
+#ifndef _WIN32
+#include <execinfo.h>   // backtrace(), backtrace_symbols_fd() -- crash handler debug aid
+#include <signal.h>     // siginfo_t, sigaction (crash handler needs the fault context)
+#include <unistd.h>     // write(), STDERR_FILENO
+#ifdef __linux__
+#include <ucontext.h>   // ucontext_t::uc_mcontext.pc -- the exact faulting instruction
+#endif
+#endif
+
 #include <character_name.hpp>
 #include <d2s.hpp>
 #include <d2s_items.hpp>
@@ -1844,16 +1853,18 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         // whichever phase spiked so we can tell CPU-side from GPU-side.
         if (dt_input > 100 || dt_render > 100 || dt_present > 100) {
             d2d::log::warn(
-                "slow frame: input={} ms render={} ms present={} ms screen={} cam=({},{})",
-                dt_input, dt_render, dt_present, int(screen), int(town.player.x), int(town.player.y));
+                "slow frame: input={} ms render={} ms present={} ms screen={} cam=({},{}) rain_state={} drops={} splashes={}",
+                dt_input, dt_render, dt_present, int(screen), int(town.player.x), int(town.player.y),
+                town.rain.state, town.rain.drops.size(), town.rain.splashes.size());
         }
         if (now_ms - stat_last_report_ms >= 5000) {
             const std::uint32_t avg_r = stat_frames ? stat_render_sum  / stat_frames : 0;
             const std::uint32_t avg_p = stat_frames ? stat_present_sum / stat_frames : 0;
             d2d::log::info(
-                "alive: {} frames/5s | input max={} | render avg={} max={} | present avg={} max={} | screen={} cam=({},{})",
-                stat_frames, stat_input_max, avg_r, stat_render_max, avg_p, stat_present_max,
-                int(screen), int(town.player.x), int(town.player.y));
+                "alive: {} frames/5s ({:.1f} fps) | input max={} | render avg={} max={} | present avg={} max={} | screen={} cam=({},{}) rain_state={} drops={} splashes={}",
+                stat_frames, float(stat_frames) / 5.f, stat_input_max, avg_r, stat_render_max, avg_p, stat_present_max,
+                int(screen), int(town.player.x), int(town.player.y),
+                town.rain.state, town.rain.drops.size(), town.rain.splashes.size());
             stat_frames = 0;      stat_input_max = 0;
             stat_render_sum = 0;  stat_render_max = 0;
             stat_present_sum = 0; stat_present_max = 0;
@@ -1896,6 +1907,67 @@ extern "C" void d2d_sigint_handler(int) {
     if (g_sigint_count >= 2) _exit(130);
 }
 
+#ifndef _WIN32
+// TEMPORARY debug aid (TrimUI bring-up): a bare "Segmentation fault" from
+// the shell tells us nothing about where. This dumps the raw call stack to
+// stderr -- which the TrimUI launcher already redirects into launcher.log --
+// using only async-signal-safe calls, then re-raises the signal so the OS's
+// own "Segmentation fault" message and exit code still happen normally.
+// Not wired up to Sentry/Crashpad on purpose: that needs a configured DSN
+// and a minidump reader we don't have handy on this console; this is the
+// zero-dependency version for a single real-hardware repro.
+//
+// First attempt used plain backtrace()/backtrace_symbols_fd() and only got
+// 2 frames back: the handler itself and the kernel's sigreturn trampoline --
+// the unwinder couldn't cross the signal trampoline to reach the actual
+// faulting instruction (confirmed on real hardware, not a guess). Fix:
+// take the PC straight from the ucontext_t the kernel hands the handler
+// (SA_SIGINFO), which is exact and doesn't depend on stack unwinding at
+// all, then splice it in as frame 0 before asking backtrace_symbols_fd for
+// whatever caller frames it can still find above that.
+void write_hex(unsigned long value) {
+    char digits[] = "0123456789abcdef";
+    char buf[2 + sizeof(value) * 2];
+    buf[0] = '0';
+    buf[1] = 'x';
+    for (std::size_t i = 0; i < sizeof(value) * 2; ++i) {
+        const auto shift = (sizeof(value) * 2 - 1 - i) * 4;
+        buf[2 + i] = digits[(value >> shift) & 0xF];
+    }
+    write(STDERR_FILENO, buf, sizeof(buf));
+}
+
+extern "C" void d2d_crash_handler(int sig, siginfo_t*, void* ucontext_ptr) {
+    const char header[] = "\n--- d2d crash handler: signal ";
+    write(STDERR_FILENO, header, sizeof(header) - 1);
+    char sig_digits[8];
+    int  n = 0;
+    int  s = sig;
+    do { sig_digits[n++] = char('0' + s % 10); s /= 10; } while (s > 0 && n < int(sizeof(sig_digits)));
+    while (n > 0) write(STDERR_FILENO, &sig_digits[--n], 1);
+    write(STDERR_FILENO, " ---\n", 5);
+
+    void* frames[64];
+    const int count = backtrace(frames, 64);
+#ifdef __linux__
+    if (ucontext_ptr) {
+        const auto* uc = static_cast<ucontext_t*>(ucontext_ptr);
+        const unsigned long fault_pc = uc->uc_mcontext.pc;
+        const char pc_label[] = "fault pc=";
+        write(STDERR_FILENO, pc_label, sizeof(pc_label) - 1);
+        write_hex(fault_pc);
+        write(STDERR_FILENO, "\n", 1);
+        if (count > 0) frames[0] = reinterpret_cast<void*>(fault_pc);   // the signal trampoline frame is useless; replace it
+    }
+#else
+    (void)ucontext_ptr;
+#endif
+    backtrace_symbols_fd(frames, count, STDERR_FILENO);
+    std::signal(sig, SIG_DFL);
+    raise(sig);
+}
+#endif
+
 /**
  * Parse launcher/config options and start the game with the selected local data and input settings.
  * Touch controls remain opt-in through the flag or saved configuration.
@@ -1908,6 +1980,16 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, d2d_sigint_handler);
 #ifdef SIGPIPE                                        // POSIX only; Windows has no SIGPIPE
     std::signal(SIGPIPE, SIG_IGN);
+#endif
+#ifndef _WIN32
+    struct sigaction crash_sa{};
+    crash_sa.sa_sigaction = d2d_crash_handler;
+    crash_sa.sa_flags     = SA_SIGINFO;
+    sigemptyset(&crash_sa.sa_mask);
+    sigaction(SIGSEGV, &crash_sa, nullptr);
+    sigaction(SIGABRT, &crash_sa, nullptr);
+    sigaction(SIGBUS,  &crash_sa, nullptr);
+    sigaction(SIGILL,  &crash_sa, nullptr);
 #endif
 #ifdef _WIN32
     // Warnings in colour: escape codes only work once VT processing is on.
@@ -2060,10 +2142,16 @@ int main(int argc, char** argv) {
     // $D2_PATCH_INSTALLER (the tests' convention), else `patch =`.
     const char* patch_env = std::getenv("D2_PATCH_INSTALLER");
     const fs::path patch_layer = patch_env && *patch_env ? fs::path(patch_env) : fs::path(cfg["patch"]);
+    // d2d.cfg `lang =` (TrimUI addition, gamedata_load.hpp): which
+    // data\local\{LNG,UI}\<lang>\ folder strings and menu art load from.
+    // Hardcoded "ENG" used to read every string in English even on a fully
+    // translated install (a multi-language disc has ENG/ESP/DEU/FRA/...
+    // all present at once; nothing before this picked one).
+    const std::string lang = cfg["lang"].empty() ? "ENG" : cfg["lang"];
 
     std::vector<std::uint8_t> framebuffer(std::size_t(kScreenWidth) * kScreenHeight * 4, 0);
     for (std::size_t i = 3; i < framebuffer.size(); i += 4) framebuffer[i] = 0xFF;
-    auto scene = load_scene(data_dir, patch_layer);   // the menus' part; nullopt if the MPQs won't load
+    auto scene = load_scene(data_dir, patch_layer, lang);   // the menus' part; nullopt if the MPQs won't load
     // Nothing to run without them: say so (the log has which MPQ and why)
     // rather than go on to a game with no data.
     if (!scene) {
@@ -2076,7 +2164,7 @@ int main(int argc, char** argv) {
     }
     // The rest loads while the title shows (run_windowed waits before the menus).
     std::future<void> loading;
-    if (scene) loading = std::async(std::launch::async, [&scene, save_dir, map_seed] { finish_scene(*scene, save_dir, map_seed, game_seed); });
+    if (scene) loading = std::async(std::launch::async, [&scene, save_dir, map_seed, lang] { finish_scene(*scene, save_dir, map_seed, game_seed, lang); });
 
     std::atomic<std::uint64_t> frame_count{0};
     std::atomic<bool>          quit{false};

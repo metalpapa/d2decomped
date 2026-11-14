@@ -117,11 +117,17 @@ struct Bindings {
     Bindings() {                                   // the default layout (apps/d2d/README.md)
         using enum Button;
         const auto put = [&](Action action, Button first, Button second = kNone) { buttons[std::size_t(action)] = { first, second }; };
-        put(Action::Primary, South, RightTrigger);  put(Action::Secondary, East);       put(Action::Back, East);
+        // TrimUI port default (diverges from upstream's README table, which
+        // has right trigger duplicate Primary/Attack): the right trigger
+        // alone doesn't add anything A/South doesn't already do, and this
+        // handheld's analog sticks have no comfortable click, so the stick-
+        // click-only Skill Picker was hard to reach. User-requested change,
+        // still fully rebindable in-game (Options > Configure Controls).
+        put(Action::Primary, South);                put(Action::Secondary, East);       put(Action::Back, East);
         put(Action::GameMenu, Start);               put(Action::Inventory, North);      put(Action::Character, West);
         put(Action::SkillTree, LeftShoulder);       put(Action::QuestLog, Back);        put(Action::Automap, RightShoulder);
         put(Action::ToggleRun, LeftStick);          put(Action::SwapWeapons, LeftTrigger);
-        put(Action::SkillPicker, RightStick);       put(Action::Recentre, RightStick);
+        put(Action::SkillPicker, RightStick, RightTrigger); put(Action::Recentre, RightStick);
         put(Action::Belt1, DpadUp);                 put(Action::Belt2, DpadDown);       put(Action::Belt3, DpadLeft);
         put(Action::Belt4, DpadRight);              put(Action::Trade, West);
         put(Action::TabPrev, LeftShoulder);         put(Action::TabNext, RightShoulder);

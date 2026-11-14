@@ -30,6 +30,10 @@
 #include <utility>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>   // sync() -- force the save's rename() to the physical disk, see replace()
+#endif
+
 namespace d2d::game {
 
 struct CharacterStore {
@@ -99,6 +103,20 @@ private:
             if (!file_out) return "couldn't write " + tmp.string();
         }
         fs::rename(tmp, file, error);
+#ifndef _WIN32
+        // Confirmed real on a TrimUI real-hardware session (2026-11-14): a
+        // save that logged success here was still LOST a few seconds later
+        // by a hard power-cycle of the console, because Linux's write-back
+        // cache hadn't flushed this rename to the physical FAT32 SD card
+        // yet. A full `sync()` is heavy-handed (flushes the whole
+        // filesystem, not just this file) but character saves are rare
+        // (on quit, not per-frame) and this is a handheld game console, not
+        // a server under load -- correctness here matters far more than
+        // the sub-millisecond cost. Windows has no direct equivalent this
+        // cheap; skip it there rather than reach for FlushFileBuffers on a
+        // HANDLE we don't have from an already-closed ofstream.
+        if (!error) sync();
+#endif
         return error ? "couldn't replace " + file.string() + ": " + error.message() : std::string{};
     }
 };

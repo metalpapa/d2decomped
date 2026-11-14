@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace d2d::client {
@@ -55,11 +56,14 @@ void load_act_palettes(Scene& scene, const d2d::mpq::Stack& mpqs, int act);
 
 // The MPQs and strings (open_game_data) and the menus' sprites, fonts and
 // palettes: enough for the title. nullopt: no game data.
-std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_installer);
+// lang: the data\local\{LNG,UI}\<lang>\ folder read for strings and menu
+// art (ENG by default; TrimUI port addition, see gamedata_load.hpp).
+std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_installer, std::string_view lang = "ENG");
 // The rest, off the main thread while the title shows: every table, the
 // saves, Act 1 on the first save's map (save_seed) else map_seed, the game's
 // sprites and palettes. Nothing may read those until it returns.
 void finish_scene(Scene& scene, const fs::path& save_dir, std::uint32_t map_seed,
-                  std::uint32_t (*save_seed)(const d2d::d2s::Header&));
+                  std::uint32_t (*save_seed)(const d2d::d2s::Header&),
+                  std::string_view lang = "ENG");
 
 }  // namespace d2d::client
