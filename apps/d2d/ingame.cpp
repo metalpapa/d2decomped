@@ -233,6 +233,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
         std::pair<const Unit*, std::array<int, 4>> hovered{ nullptr, {} };
         std::vector<std::pair<const Unit*, std::array<int, 2>>> items;   // each drawn ground item and where it stands on screen
         render_world(world, scene, level, cam_x, cam_y, elapsed_ms, units, world_mouse_x, mouse_y, &hovered, light, rain, show_items ? &items : nullptr);
+        set_phase(MainPhase::IngamePlayer);   // rain, overlays, automap: the timing's "post-world"
         if (rain) draw_rain(world, *rain, scene.act_pal.entries().empty() ? scene.pal : scene.act_pal,
                             hud.right_open == hud.left_open ? 0 : hud.right_open ? 1 : 2);
         if (hovered_npc) *hovered_npc = hovered.first ? hovered.first->npc : -1;

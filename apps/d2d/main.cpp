@@ -1809,6 +1809,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
             paint_test_pattern(framebuffer);
         }
 
+        close_phase();
         const std::uint32_t t_after_render = std::uint32_t(SDL_GetTicks());
         if (g_show_fps && scene) {
             // Counted over a second so the number is readable; render ms is the average of that second.
@@ -1882,6 +1883,12 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                 stat_frames, float(stat_frames) / 5.f, stat_input_max, avg_r, stat_render_max, avg_p, stat_present_max,
                 int(screen), int(town.player.x), int(town.player.y),
                 town.rain.state, town.rain.drops.size(), town.rain.splashes.size());
+            if (stat_frames) {   // where an ingame frame's render goes, ms a frame
+                const auto per_frame = [&](int phase) { return double(g_phase_us[std::size_t(phase)]) / 1000.0 / double(stat_frames); };
+                d2d::log::info("phases (ms/frame): clear={:.1f} floor+shadow={:.1f} walls+units={:.1f} post-world={:.1f} hud={:.1f}",
+                               per_frame(0), per_frame(1), per_frame(3), per_frame(4), per_frame(5));
+            }
+            g_phase_us.fill(0);
             stat_frames = 0;      stat_input_max = 0;
             stat_render_sum = 0;  stat_render_max = 0;
             stat_present_sum = 0; stat_present_max = 0;

@@ -2,7 +2,9 @@
 // Main-loop phase tracking for the hang watchdog.
 #pragma once
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 
 namespace d2d::client {
@@ -52,10 +54,28 @@ inline const char* main_phase_name(std::uint32_t phase) {
 // can report which sub-phase we're stuck in. Declared ahead of
 // render_ingame so it can write the ingame sub-phases.
 inline std::atomic<std::uint32_t>* g_current_phase_ptr = nullptr;
+
+// Microseconds spent in each ingame sub-phase (phase 10..15) since the last
+// report, summed by set_phase / close_phase for the 5 s `alive` line.
+inline std::array<std::uint64_t, 6> g_phase_us{};
+inline std::uint64_t g_phase_mark_us = 0;
+inline std::uint64_t phase_now_us() {
+    return std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
 inline void set_phase(MainPhase phase) {
-    if (g_current_phase_ptr)
-        g_current_phase_ptr->store(std::uint32_t(phase),
-                                   std::memory_order_relaxed);
+    if (!g_current_phase_ptr) return;
+    const auto previous = g_current_phase_ptr->load(std::memory_order_relaxed);
+    const auto now = phase_now_us();
+    if (previous >= 10 && previous < 16 && g_phase_mark_us) g_phase_us[previous - 10] += now - g_phase_mark_us;
+    g_phase_mark_us = now;
+    g_current_phase_ptr->store(std::uint32_t(phase), std::memory_order_relaxed);
+}
+// The render is over: charge what's left to the ingame sub-phase it ended in.
+inline void close_phase() {
+    if (!g_current_phase_ptr) return;
+    const auto previous = g_current_phase_ptr->load(std::memory_order_relaxed);
+    if (previous >= 10 && previous < 16 && g_phase_mark_us) g_phase_us[previous - 10] += phase_now_us() - g_phase_mark_us;
+    g_phase_mark_us = 0;
 }
 
 }  // namespace d2d::client
