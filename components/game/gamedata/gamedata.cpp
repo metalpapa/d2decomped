@@ -43,6 +43,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -1417,17 +1418,34 @@ const Level* GameData::level(int id) const {
     return levels[id].get();
 }
 
+// Built levels are never freed, so prefetching every neighbour fills a 1 GB handheld
+// (a long session fell to 3 fps with the system's memory gone). With under 220 MB
+// available, only the level a player walks into is built (on demand, a stall), not
+// the ones next to it. Linux only; elsewhere memory is never tight.
+static bool memory_tight() {
+#ifdef __linux__
+    if (std::ifstream meminfo("/proc/meminfo"); meminfo)
+        for (std::string line; std::getline(meminfo, line);)
+            if (line.starts_with("MemAvailable:")) return std::atol(line.c_str() + 13) < 220 * 1024;   // kB
+#endif
+    return false;
+}
+
 // The levels a player on `l` may reach next: the act's levels touching
 // it, and where its warps lead.
 void want_nearby(const GameData& game_data, const Level& level) {
+    const auto want = [&](int id) {
+        if (!game_data.levels.contains(id) && memory_tight()) { d2d::log::info("  memory tight: not prefetching level {}", id); return; }
+        game_data.want_level(id);
+    };
     const auto& layout = game_data.layout_of(level.id);
     const auto placement = std::ranges::find(layout, level.id, &d2d::drlg::Placed::level);
     if (placement != layout.end())
         for (const auto& other_placement : layout)
             if (other_placement.level != level.id && other_placement.x <= placement->x + placement->width && placement->x <= other_placement.x + other_placement.width && other_placement.y <= placement->y + placement->height && placement->y <= other_placement.y + other_placement.height)
-                game_data.want_level(other_placement.level);
-    for (const auto& warp : level.warps) game_data.want_level(warp.destination);
-    for (const int walk : walk_links(game_data, level.id)) game_data.want_level(walk);
+                want(other_placement.level);
+    for (const auto& warp : level.warps) want(warp.destination);
+    for (const int walk : walk_links(game_data, level.id)) want(walk);
 }
 
 }  // namespace d2d::game
