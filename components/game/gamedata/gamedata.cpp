@@ -1437,40 +1437,46 @@ static long available_kb() {
 static bool memory_tight() { const long kb = available_kb(); return kb >= 0 && kb < 220 * 1024; }
 
 void GameData::manage_art(std::span<const Level* const> active) const {
-    // `budget` tilesets at most (-1: all); returns whether any is still out.
-    const auto ensure = [&](const Level* level, int budget) {
-        if (!level) return false;
-        auto& mutable_level = const_cast<Level&>(*level);
-        int restored = 0;
-        bool missing = false;
-        for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
-            auto& archive = mutable_level.dt1s[i];
-            if (archive.resident()) continue;
-            if (budget >= 0 && restored >= budget) { missing = true; break; }
-            const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
-            if (bytes && archive.restore_pixels(*bytes)) ++restored;
-        }
-        if (restored) d2d::log::info("level {}: art back ({} tilesets)", level->id, restored);
-        return missing;
-    };
     static auto last = std::chrono::steady_clock::now() - std::chrono::seconds(10);
-    static long kb = -1;
+    static long kb = -1;   // MemAvailable, lowered by what's restored between reads
     const auto now = std::chrono::steady_clock::now();
     const bool check = now - last >= std::chrono::seconds(1);
     if (check) { last = now; kb = available_kb(); }
+    // `budget` tilesets at most (-1: all); returns how many it restored.
+    const auto ensure = [&](const Level* level, int budget) {
+        if (!level) return 0;
+        auto& mutable_level = const_cast<Level&>(*level);
+        int restored = 0;
+        for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
+            auto& archive = mutable_level.dt1s[i];
+            if (archive.resident()) continue;
+            if (budget >= 0 && restored >= budget) break;
+            const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
+            if (!bytes || !archive.restore_pixels(*bytes)) continue;
+            ++restored;
+            std::size_t size = 0;
+            for (const auto& tile : archive.tiles()) size += tile.pixels.capacity();
+            if (kb >= 0) kb -= long(size >> 10);
+        }
+        if (restored) d2d::log::info("level {}: art back ({} tilesets)", level->id, restored);
+        return restored;
+    };
     std::unordered_set<const Level*> keep;
-    std::vector<const Level*> neighbours;
     for (const Level* level : active) {
         if (!level) continue;
         keep.insert(level);
         ensure(level, -1);
     }
+    // The neighbours' edges: one tileset a frame, and only with room to spare (restoring them all on low memory got the game killed).
+    // Released only far lower (200 MB), so they don't go and come back around one line.
+    const bool roomy = kb < 0 || kb > 350 * 1024, keep_near = kb < 0 || kb > 200 * 1024;
+    bool restored_one = false;
     for (const Level* level : active)
         if (level)
-            for (const auto& link : level->nearby)
-                if (keep.insert(link.level).second) neighbours.push_back(link.level);
-    // The neighbours' edges show: one tileset a frame (all at once froze the game for seconds on low memory).
-    for (const Level* level : neighbours) if (ensure(level, 1)) break;
+            for (const auto& link : level->nearby) {
+                if (roomy && !restored_one) restored_one = ensure(link.level, 1) > 0;
+                if (keep_near) keep.insert(link.level);
+            }
     if (!check || kb < 0 || kb > 450 * 1024) return;
     std::size_t freed = 0;
     const auto release = [&](const Level& level) {
