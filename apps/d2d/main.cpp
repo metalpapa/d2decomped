@@ -1885,8 +1885,8 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                 town.rain.state, town.rain.drops.size(), town.rain.splashes.size());
             if (stat_frames) {   // where an ingame frame's render goes, ms a frame
                 const auto per_frame = [&](int phase) { return double(g_phase_us[std::size_t(phase)]) / 1000.0 / double(stat_frames); };
-                d2d::log::info("phases (ms/frame): clear={:.1f} floor+shadow={:.1f} walls+units={:.1f} post-world={:.1f} hud={:.1f}",
-                               per_frame(0), per_frame(1), per_frame(3), per_frame(4), per_frame(5));
+                d2d::log::info("phases (ms/frame): clear={:.1f} floor+shadow={:.1f} walls+units={:.1f} post-world={:.1f} hud={:.1f} rain={:.1f} labels={:.1f} wide-copy={:.1f} automap={:.1f}",
+                               per_frame(0), per_frame(1), per_frame(3), per_frame(4), per_frame(5), per_frame(6), per_frame(7), per_frame(8), per_frame(9));
             }
             g_phase_us.fill(0);
             stat_frames = 0;      stat_input_max = 0;

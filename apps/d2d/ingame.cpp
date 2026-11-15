@@ -2,6 +2,8 @@
 // Definitions for ingame.hpp: the in-game frame and the rain.
 #include "ingame.hpp"
 
+#include <bit>
+#include <cstring>
 #include <overlays.hpp>
 
 #include "common.hpp"
@@ -54,29 +56,29 @@ void draw_rain(std::vector<std::uint8_t>& framebuffer, const d2d::rules::Rain& r
             }
         return;
     }
-    const auto plot = [&](int x, int y, std::uint8_t index) {
+    const auto plot = [&](int x, int y, const d2d::palette::Rgba& colour) {
         if (x < 0 || y < 0 || x >= screen_w || y >= screen_h) return;
-        const auto colour = pal[index];
         auto* pixel = framebuffer.data() + (std::size_t(y) * std::size_t(screen_w) + std::size_t(x)) * 4;
         pixel[0] = colour.r; pixel[1] = colour.g; pixel[2] = colour.b;
     };
     const auto line = [&](int x, int y, int to_x, int to_y, std::uint8_t index) {   // FUN_006c8c80
+        const auto colour = pal[index];   // once a line, not a pixel
         int run_x = to_x - x, run_y = to_y - y;
         const int step_x = run_x < 0 ? -1 : 1, step_y = run_y < 0 ? -1 : 1;
         run_x = std::abs(run_x); run_y = std::abs(run_y);
-        plot(x, y, index);
+        plot(x, y, colour);
         int error = 0;
         if (run_x < run_y) {
             for (int left_steps = run_y; left_steps > 0; --left_steps) {
                 y += step_y; error += run_x;
                 if (run_y < error) { x += step_x; error -= run_y; }
-                plot(x, y, index);
+                plot(x, y, colour);
             }
         } else {
             for (int left_steps = run_x; left_steps > 0; --left_steps) {
                 x += step_x; error += run_y;
                 if (run_x < error) { y += step_y; error -= run_x; }
-                plot(x, y, index);
+                plot(x, y, colour);
             }
         }
     };
@@ -147,8 +149,14 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
         set_phase(MainPhase::IngameClear);
         // Clear to black — tiles don't cover every subtile so an
         // uninitialized fb would leak the previous frame's contents.
-        std::fill(world.begin(), world.end(), std::uint8_t{0});
-        for (std::size_t i = 3; i < world.size(); i += 4) world[i] = 0xFF;
+        if constexpr (std::endian::native == std::endian::little) {   // r, g, b = 0, a = 0xFF as one 32-bit store a pixel
+            const std::uint32_t black = 0xFF000000u;
+            auto* pixels = world.data();
+            for (std::size_t i = 0; i + 4 <= world.size(); i += 4) std::memcpy(pixels + i, &black, 4);
+        } else {
+            std::fill(world.begin(), world.end(), std::uint8_t{0});
+            for (std::size_t i = 3; i < world.size(); i += 4) world[i] = 0xFF;
+        }
         set_phase(MainPhase::IngameFloor);   // render_world does floor+shadow+walls internally
         // Player: the camera follows them, so their feet sit on the camera
         // point (kW/2, kViewY), off it by `player_offset` in local co-op
@@ -234,8 +242,10 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
         std::vector<std::pair<const Unit*, std::array<int, 2>>> items;   // each drawn ground item and where it stands on screen
         render_world(world, scene, level, cam_x, cam_y, elapsed_ms, units, world_mouse_x, mouse_y, &hovered, light, rain, show_items ? &items : nullptr);
         set_phase(MainPhase::IngamePlayer);   // rain, overlays, automap: the timing's "post-world"
+        set_phase(MainPhase::IngameRain);
         if (rain) draw_rain(world, *rain, scene.act_pal.entries().empty() ? scene.pal : scene.act_pal,
                             hud.right_open == hud.left_open ? 0 : hud.right_open ? 1 : 2);
+        set_phase(MainPhase::IngamePlayer);
         if (hovered_npc) *hovered_npc = hovered.first ? hovered.first->npc : -1;
         // What a unit says (a shrine's message), centred over it.
         // ponytail: game.exe's overhead chat draw (Chat.cpp) isn't traced:
@@ -270,6 +280,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
         // (View::ground's); how game.exe's client gets those items again
         // (their order in their rooms) isn't traced.
         if (show_items) {
+            set_phase(MainPhase::IngameLabels);
             const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
             std::array<std::uint8_t, 3> hover_blue{};
             const auto source = pal.entries();
@@ -307,6 +318,7 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
                 }
             }
             if (label_hovered) hovered = { nullptr, {} };   // the label names it: no second name
+            set_phase(MainPhase::IngamePlayer);
         }
         // Name over whatever the cursor points at, centred above it, on a
         // box a quarter as bright (FUN_00503000: draw mode 2, text + 8 wide).
@@ -320,10 +332,13 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
             scene.font.draw_tinted(world, std::uint32_t(world_w), kScreenHeight, pal, (box[0] + box[2]) / 2 - scene.font.measure(hovered_name) / 2,
                                top, hovered_name, colour[0], colour[1], colour[2]);
         }
-        if (wide)
+        if (wide) {
+            set_phase(MainPhase::IngameCopy);
             for (std::size_t y = 0; y < kScreenHeight; ++y)
                 std::copy_n(world.begin() + std::ptrdiff_t((y * std::size_t(world_w) + std::size_t(off)) * 4), kScreenWidth * 4,
                             framebuffer.begin() + std::ptrdiff_t(y * kScreenWidth * 4));
+            set_phase(MainPhase::IngamePlayer);
+        }
         // Who reads the hover text: red requirements, class lines, attack speed.
         std::optional<d2d::rules::Wearer> wearer_value;
         if (inventory && hud_stats && class_idx >= 0 && class_idx < 7) {
@@ -336,8 +351,10 @@ void render_ingame(std::vector<std::uint8_t>& framebuffer,
         // FUN_0045ae90 isn't 3). Round the camera less the panel's quarter, which
         // the map makes its own (rules::automap_scroll).
         if (automap && !automap->covered) {
+            set_phase(MainPhase::IngameAutomap);
             const float unshift = float(d2d::rules::panel_view_shift(automap->panel_side, world_w)) / kIsoW;
             draw_automap(framebuffer, scene, *automap, cam_x - unshift + float(level.world_x), cam_y + unshift + float(level.world_y));
+            set_phase(MainPhase::IngamePlayer);
         }
         // The 800x600 border round an open side panel, under the panels
         // (FUN_00499450: FUN_00498630 left, FUN_00498700 right; bottom-left
