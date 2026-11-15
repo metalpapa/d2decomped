@@ -93,10 +93,10 @@ void load_town(GameData& game_data, d2d::mpq::Stack& mpqs, const char* ds1_path)
     game_data.town.dt1s.reserve(files.size());
     for (const auto& file : files) {
         const auto mpq_path = ds1_path_to_mpq(file);
-        auto dt1_bytes = mpqs.try_read(mpq_path);
-        if (!dt1_bytes) continue;
         try {
-            game_data.town.dt1s.emplace_back(*dt1_bytes, game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
+            auto archive = shared_dt1(mpqs, mpq_path, game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
+            if (!archive) continue;
+            game_data.town.dt1s.push_back(std::move(archive));
             game_data.town.dt1_paths.push_back(mpq_path);
         } catch (const std::exception& error) {
             d2d::log::warn("world: {}: {}", mpq_path, error.what());

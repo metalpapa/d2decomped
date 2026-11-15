@@ -724,7 +724,7 @@ void finish_level(Level& level) {
     // ponytail: first match, not game.exe's rarity pick — generated levels
     // carry the real picks (Level::picks) and use those instead.
     for (const auto& dt1 : level.dt1s)
-        for (const auto& tile : dt1.tiles()) level.tile_lookup.try_emplace(tile_key(tile.style, tile.sequence, tile.type), &tile);
+        for (const auto& tile : dt1->tiles()) level.tile_lookup.try_emplace(tile_key(tile.style, tile.sequence, tile.type), &tile);
     // Collision grid from the same tiles the renderer draws: floors
     // (type 0) and walls/objects, but not shadows (13) or roofs (15).
     // A tile's 25 DT1 subtile flags OR straight into the grid, rows stored
@@ -776,6 +776,24 @@ void finish_level(Level& level) {
     level.tile_walk = level.walk;
 }
 
+std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, const std::string& mpq_path, d2d::dt1::Pixels pixels) {
+    static std::mutex mutex;
+    static std::map<std::string, std::weak_ptr<d2d::dt1::Archive>> cache;
+    std::string key = mpq_path;
+    std::ranges::transform(key, key.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    {
+        std::lock_guard lock(mutex);
+        if (auto found = cache[key].lock()) return found;
+    }
+    auto bytes = mpqs.try_read(mpq_path);
+    if (!bytes) return nullptr;
+    auto made = std::make_shared<d2d::dt1::Archive>(*bytes, pixels);
+    std::lock_guard lock(mutex);
+    if (auto raced = cache[key].lock()) return raced;
+    cache[key] = made;
+    return made;
+}
+
 LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::OutdoorAssets& assets, int type, d2d::dt1::Pixels pixels) {
     LevelDt1s dt1s;
     dt1s.heads = d2d::drlg::load_room_dt1s(assets, [&](const std::string& path) { return mpqs.try_read(path); }, type);
@@ -786,11 +804,16 @@ LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::Outdoo
                 if (dt1s.heads.by_bit[std::size_t(i)]) files.emplace_back(dt1s.heads.by_bit[std::size_t(i)], std::string(assets.lvl_types.get(row, "File " + std::to_string(i + 1))));
     for (std::size_t k = 0; k < 3; ++k)
         if (dt1s.heads.always[k]) files.emplace_back(dt1s.heads.always[k], std::array{ "Act1/Outdoors/Blank.dt1", "Act1/Barracks/InvisWal.dt1", "Act1/Barracks/Warp.dt1" }[k]);
-    level.dt1s.reserve(files.size());                      // archive points into it
+    level.dt1s.reserve(files.size());
     for (const auto& [file_key, file] : files) {
-        auto bytes = mpqs.try_read(R"(data\global\tiles\)" + ds1_path_to_mpq(file));
-        if (!bytes) continue;
-        try { dt1s.archive[file_key] = &level.dt1s.emplace_back(*bytes, pixels); level.dt1_paths.push_back(R"(data\global\tiles\)" + ds1_path_to_mpq(file)); } catch (const std::exception& error) { d2d::log::warn("level {}: {}: {}", level.id, file, error.what()); }
+        const auto path = R"(data\global\tiles\)" + ds1_path_to_mpq(file);
+        try {
+            auto archive = shared_dt1(mpqs, path, pixels);
+            if (!archive) continue;
+            dt1s.archive[file_key] = archive.get();
+            level.dt1s.push_back(std::move(archive));
+            level.dt1_paths.push_back(path);
+        } catch (const std::exception& error) { d2d::log::warn("level {}: {}: {}", level.id, file, error.what()); }
     }
     return dt1s;
 }
@@ -1448,7 +1471,7 @@ void GameData::manage_art(std::span<const Level* const> active) const {
         auto& mutable_level = const_cast<Level&>(*level);
         int restored = 0;
         for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
-            auto& archive = mutable_level.dt1s[i];
+            auto& archive = *mutable_level.dt1s[i];
             if (archive.resident()) continue;
             if (budget >= 0 && restored >= budget) break;
             const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
@@ -1479,9 +1502,12 @@ void GameData::manage_art(std::span<const Level* const> active) const {
             }
     if (!check || kb < 0 || kb > 450 * 1024) return;
     std::size_t freed = 0;
+    std::unordered_set<const d2d::dt1::Archive*> used;   // shared: a kept level's tileset stays whoever else has it
+    for (const Level* level : keep)
+        if (level) for (const auto& archive : level->dt1s) used.insert(archive.get());
     const auto release = [&](const Level& level) {
         if (keep.contains(&level) || level.dt1_paths.size() != level.dt1s.size()) return;   // no way back without every path
-        for (auto& archive : const_cast<Level&>(level).dt1s) if (archive.resident()) freed += archive.release_pixels();
+        for (const auto& archive : level.dt1s) if (archive->resident() && !used.contains(archive.get())) freed += archive->release_pixels();
     };
     release(town);
     for (const auto& entry : levels) release(*entry.second);

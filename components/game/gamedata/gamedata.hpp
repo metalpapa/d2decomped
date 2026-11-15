@@ -194,7 +194,7 @@ struct Level {
     std::array<Critter, 4> critters{};
     int teleport = 1;                                  // Levels.txt Teleport: 0 no, 1 yes, 2 only in a clear line (FUN_0061db70 +4)
     d2d::ds1::Map ds1;
-    std::vector<d2d::dt1::Archive> dt1s;
+    std::vector<std::shared_ptr<d2d::dt1::Archive>> dt1s;   // shared_dt1: levels of a kind share one decode
     std::vector<std::string> dt1_paths;                 // each archive's MPQ path (GameData::manage_art reloads released pixels)
     // Keyed by (style, seq, type) — one map covers floors, walls, trees,
     // shadows, roofs; the DT1's `type` field disambiguates orientations
@@ -962,6 +962,10 @@ constexpr const char* kLayerCode[16] = {
 // "\d2\data\global\tiles\act1\town\floor.dt1") into the MPQ path we can hand to Stack::try_read. The
 // DS1 files store paths as they were on Blizzard's build box, with a
 // leading "\d2\" prefix and forward slashes never — normalize both.
+// A tileset decoded once for every level using it (each outdoor level of an act loads the same ~29 files).
+// Null when the MPQs lack it; throws on a bad file. Any thread.
+std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, const std::string& mpq_path, d2d::dt1::Pixels pixels);
+
 [[nodiscard]] inline std::string ds1_path_to_mpq(std::string_view path) {
     if (path.size() > 4 && (path.starts_with("\\d2\\") || path.starts_with("/d2/")))
         path.remove_prefix(4);
