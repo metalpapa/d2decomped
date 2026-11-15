@@ -97,6 +97,7 @@ void load_town(GameData& game_data, d2d::mpq::Stack& mpqs, const char* ds1_path)
         if (!dt1_bytes) continue;
         try {
             game_data.town.dt1s.emplace_back(*dt1_bytes, game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
+            game_data.town.dt1_paths.push_back(mpq_path);
         } catch (const std::exception& error) {
             d2d::log::warn("world: {}: {}", mpq_path, error.what());
         }

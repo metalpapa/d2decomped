@@ -1474,7 +1474,7 @@ void GameData::manage_art(std::span<const Level* const> active) const {
     if (!check || kb < 0 || kb > 450 * 1024) return;
     std::size_t freed = 0;
     const auto release = [&](const Level& level) {
-        if (keep.contains(&level)) return;
+        if (keep.contains(&level) || level.dt1_paths.size() != level.dt1s.size()) return;   // no way back without every path
         for (auto& archive : const_cast<Level&>(level).dt1s) if (archive.resident()) freed += archive.release_pixels();
     };
     release(town);
