@@ -562,10 +562,19 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
                 for (int row = item.row; row < item.row + height && row < layout->rows; ++row)
                     for (int col = item.column; col < item.column + width && col < layout->cols; ++col) taken[std::size_t(row * layout->cols + col)] = true;
             }
-            for (int row = 0; row < layout->rows; ++row)
-                for (int col = 0; col < layout->cols; ++col)
-                    if (!taken[std::size_t(row * layout->cols + col)])
-                        centre(layout->grid_x + col * layout->box_w, layout->grid_y + row * layout->box_h, layout->box_w, layout->box_h);
+            // With an item in hand the cursor must land where it FITS: the
+            // click puts its top-left cell half its size back from the cursor
+            // (item_cursor_command), so a single free cell is no drop target
+            // for anything bigger than 1 x 1. Offer each free footprint's middle.
+            const auto [held_w, held_h] = held ? d2d::rules::item_size(scene->rules, held->code) : std::pair{ 1, 1 };
+            for (int row = 0; row + held_h <= layout->rows; ++row)
+                for (int col = 0; col + held_w <= layout->cols; ++col) {
+                    bool free = true;
+                    for (int y = row; y < row + held_h && free; ++y)
+                        for (int x = col; x < col + held_w; ++x)
+                            if (taken[std::size_t(y * layout->cols + x)]) { free = false; break; }
+                    if (free) centre(layout->grid_x + col * layout->box_w, layout->grid_y + row * layout->box_h, held_w * layout->box_w, held_h * layout->box_h);
+                }
         }
         if (inv_open)
             for (int slot = d2d::d2s::body_location::kFirst; slot <= d2d::d2s::body_location::kLast; ++slot)

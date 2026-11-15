@@ -604,6 +604,8 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
             const auto* to_cursor = click.cmd ? std::get_if<cmd::ToCursor>(&*click.cmd) : nullptr;
             const auto used = to_cursor ? std::ranges::find(character.items, to_cursor->item, &d2d::d2s::Item::id) : character.items.end();
             if (identify_with >= 0) identify_with = -1;                  // a right-click drops the pick
+            else if (pad_playing && !click.cmd && (inv_open || char_open || stash_open || cube_open || quest_log.open || hireling.open || party.open))
+                inv_open = char_open = stash_open = cube_open = quest_log.open = hireling.open = party.open = false;   // TrimUI: B on nothing closes the panels, as Esc
             else if (used != character.items.end() &&
                      (((pad_playing && pad_config.skill_buttons) || touch_enabled) ? item_use(*used).kind == ItemUseKind::Identify : (used->code == "isc" || used->code == "ibk"))) {
                 identify_with = used->id;
