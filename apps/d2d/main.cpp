@@ -922,6 +922,8 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                     continue;
                 }
             }
+            if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) d2d::log::info("pad button {} down", int(event.gbutton.button));   // which SDL button the console's own buttons are
+            else if (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN) d2d::log::info("joystick button {} down", int(event.jbutton.button));
             gamepads.handle_event(event);
             if (event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) { pad_in_use = false; mouse_took_over = true; }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) pad_in_use = false;
@@ -1039,17 +1041,17 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
             }
             const pad::Sample first = coop_game ? gamepads.sample(SDL_JoystickID(std::max(seats.pad(ui_seat), 0)))
                                     : lobby_on  ? gamepads.sample(SDL_JoystickID(external_pads.front())) : gamepads.sample();
-            {   // TrimUI: L1 + Start held for a second leaves at once, without saving (the console's usual exit chord)
+            {   // TrimUI: Menu + Start (or Select + Start) held for a second leaves at once, without saving
                 static std::uint32_t combo_since = 0;
                 bool combo = false;
                 for (const auto& pad : gamepads.pads()) {
                     const auto held_pad = gamepads.sample(pad.id);
-                    if (held_pad.held[std::size_t(pad::Button::LeftShoulder)] && held_pad.held[std::size_t(pad::Button::Start)]) combo = true;
+                    if ((held_pad.guide || held_pad.held[std::size_t(pad::Button::Back)]) && held_pad.held[std::size_t(pad::Button::Start)]) combo = true;
                 }
                 if (!combo) combo_since = 0;
                 else if (combo_since == 0) combo_since = pad_now | 1u;
                 else if (pad_now - combo_since >= 1000u) {
-                    d2d::log::info("L1 + Start held: leaving without saving");
+                    d2d::log::info("Menu/Select + Start held: leaving without saving");
                     std::_Exit(0);
                 }
             }

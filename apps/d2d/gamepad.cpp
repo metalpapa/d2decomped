@@ -151,6 +151,7 @@ pad::Sample Gamepads::sample(SDL_JoystickID id) const {
     set(Button::LeftStick, SDL_GAMEPAD_BUTTON_LEFT_STICK);     set(Button::RightStick, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
     set(Button::DpadUp, SDL_GAMEPAD_BUTTON_DPAD_UP);           set(Button::DpadDown, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     set(Button::DpadLeft, SDL_GAMEPAD_BUTTON_DPAD_LEFT);       set(Button::DpadRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    out.guide = SDL_GetGamepadButton(handle, SDL_GAMEPAD_BUTTON_GUIDE);
     return out;
 }
 

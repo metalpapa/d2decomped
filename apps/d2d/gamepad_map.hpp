@@ -38,6 +38,7 @@ enum class Key { Escape, Return, Up, Down, Left, Right, Inventory, Character, Sk
 
 struct Sample {                       // one frame of a pad: sticks -1..1, triggers 0..1
     float lx = 0, ly = 0, rx = 0, ry = 0, left_trigger = 0, right_trigger = 0;
+    bool guide = false;               // the Menu / Home button; no action binds it (the exit chord reads it)
     std::array<bool, std::size_t(Button::Count)> held{};
     [[nodiscard]] bool operator[](Button which) const { return held[std::size_t(which)]; }
 };
