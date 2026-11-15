@@ -1912,6 +1912,26 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                                per_frame(0), per_frame(1), per_frame(3), per_frame(4), per_frame(5), per_frame(6), per_frame(7), per_frame(8), per_frame(9));
             }
             g_phase_us.fill(0);
+            // The machine itself, for slowdowns every phase shares (throttling, memory pressure): Linux only, silent elsewhere.
+            const auto first_line = [](const char* path) {
+                std::string text;
+                if (std::ifstream file(path); file) std::getline(file, text);
+                return text;
+            };
+            std::string mem_available;
+            if (std::ifstream meminfo("/proc/meminfo"); meminfo)
+                for (std::string line; std::getline(meminfo, line);)
+                    if (line.starts_with("MemAvailable:")) { mem_available = line.substr(13); break; }
+            std::string resident = first_line("/proc/self/statm");
+            if (const auto space = resident.find(' '); space != std::string::npos) {
+                const auto fields = std::string_view(resident).substr(space + 1);
+                resident = std::to_string(std::atol(std::string(fields.substr(0, fields.find(' '))).c_str()) * 4 / 1024) + " MB";   // 4 KiB pages
+            }
+            if (const auto cpu_khz = first_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"); !cpu_khz.empty() || !mem_available.empty())
+                d2d::log::info("sys: cpu0={} kHz gov={} temp0={} temp1={} memavail={} rss={} load={}", cpu_khz,
+                               first_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
+                               first_line("/sys/class/thermal/thermal_zone0/temp"), first_line("/sys/class/thermal/thermal_zone1/temp"),
+                               mem_available, resident, first_line("/proc/loadavg"));
             stat_frames = 0;      stat_input_max = 0;
             stat_render_sum = 0;  stat_render_max = 0;
             stat_present_sum = 0; stat_present_max = 0;
