@@ -595,6 +595,11 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                 item_click = click.consumed;
             }
         }
+        // TrimUI: B with an item in hand drops it at the player's feet and leaves the panels open.
+        if (mouse.rpress_this_frame && held && pad_playing && inv_open && store.npc < 0 && identify_with < 0 && !use_item.open()) {
+            send(cmd::Drop{ held->id });
+            mouse.rpress_this_frame = false;
+        }
         // A right-click on a carried item uses it: a potion in the inventory,
         // stash or belt is drunk. A store open doesn't stop it: the inventory's
         // right-click (FUN_004917c0) uses the item (FUN_00487740, C->S 0x20)

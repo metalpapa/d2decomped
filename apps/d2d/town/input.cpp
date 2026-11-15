@@ -781,6 +781,7 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
             const bool out_of_stash = kind == PadHoldKind::Move && mover && mover != item;
             pad_hold_text = std::string("Hold ") + std::string(pad::label(pad_family, pad::Button::South)) + (out_of_stash ? " to take out" : " to store");
+            if (kind == PadHoldKind::Stow) pad_hold_text += ".  " + label_of(pad::Action::Secondary) + " to drop";
         } else if (pad_shows_hold_cue(pad_playing, can_potion, can_equip, can_sell)) {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
             const std::string_view aye = pad::label(pad_family, pad::Button::South);
