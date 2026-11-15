@@ -1481,17 +1481,19 @@ void GameData::manage_art(std::span<const Level* const> active) const {
 // The levels a player on `l` may reach next: the act's levels touching
 // it, and where its warps lead.
 void want_nearby(const GameData& game_data, const Level& level) {
-    const auto want = [&](int id) {
+    // Low on memory only warp destinations wait (built on entry); a level walked into must exist or its edge is a wall.
+    const auto want_warp = [&](int id) {
         if (!game_data.levels.contains(id) && memory_tight()) { d2d::log::info("  memory tight: not prefetching level {}", id); return; }
         game_data.want_level(id);
     };
+    const auto want = [&](int id) { game_data.want_level(id); };
     const auto& layout = game_data.layout_of(level.id);
     const auto placement = std::ranges::find(layout, level.id, &d2d::drlg::Placed::level);
     if (placement != layout.end())
         for (const auto& other_placement : layout)
             if (other_placement.level != level.id && other_placement.x <= placement->x + placement->width && placement->x <= other_placement.x + other_placement.width && other_placement.y <= placement->y + placement->height && placement->y <= other_placement.y + other_placement.height)
                 want(other_placement.level);
-    for (const auto& warp : level.warps) want(warp.destination);
+    for (const auto& warp : level.warps) want_warp(warp.destination);
     for (const int walk : walk_links(game_data, level.id)) want(walk);
 }
 
