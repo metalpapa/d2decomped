@@ -26,6 +26,10 @@
 #include <txt.hpp>
 #include <unit_size.hpp>
 
+#if defined(__linux__)
+#include <malloc.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -1436,26 +1440,30 @@ void GameData::manage_art(std::span<const Level* const> active) const {
     const auto ensure = [&](const Level* level) {
         if (!level) return;
         auto& mutable_level = const_cast<Level&>(*level);
+        int restored = 0;
         for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
             auto& archive = mutable_level.dt1s[i];
             if (archive.resident()) continue;
             const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
-            if (bytes && archive.restore_pixels(*bytes)) d2d::log::info("level {}: art back ({})", level->id, mutable_level.dt1_paths[i]);
+            if (bytes && archive.restore_pixels(*bytes)) ++restored;
         }
+        if (restored) d2d::log::info("level {}: art back ({} tilesets)", level->id, restored);
     };
+    static auto last = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+    static long kb = -1;
+    const auto now = std::chrono::steady_clock::now();
+    const bool check = now - last >= std::chrono::seconds(1);
+    if (check) { last = now; kb = available_kb(); }
+    // Low on memory the neighbours' art stays out (their edges draw empty): reloading it all at once thrashed to a kill.
+    const bool roomy = kb < 0 || kb > 300 * 1024;
     std::unordered_set<const Level*> keep;
     for (const Level* level : active) {
         if (!level) continue;
         keep.insert(level);
-        for (const auto& link : level->nearby) keep.insert(link.level);
+        if (roomy) for (const auto& link : level->nearby) keep.insert(link.level);
     }
     for (const Level* level : keep) ensure(level);
-    static auto last = std::chrono::steady_clock::now();
-    const auto now = std::chrono::steady_clock::now();
-    if (now - last < std::chrono::seconds(1)) return;
-    last = now;
-    const long kb = available_kb();
-    if (kb < 0 || kb > 450 * 1024) return;
+    if (!check || kb < 0 || kb > 450 * 1024) return;
     std::size_t freed = 0;
     const auto release = [&](const Level& level) {
         if (keep.contains(&level)) return;
@@ -1463,7 +1471,11 @@ void GameData::manage_art(std::span<const Level* const> active) const {
     };
     release(town);
     for (const auto& entry : levels) release(*entry.second);
-    if (freed) d2d::log::info("memory low ({} MB free): released {} MB of tile art", kb / 1024, freed >> 20);
+    if (!freed) return;
+#if defined(__linux__) && defined(__GLIBC__)
+    malloc_trim(0);   // glibc keeps freed small blocks otherwise: MemAvailable never rose
+#endif
+    d2d::log::info("memory low ({} MB free): released {} MB of tile art, now {} MB free", kb / 1024, freed >> 20, available_kb() / 1024);
 }
 
 // The levels a player on `l` may reach next: the act's levels touching
