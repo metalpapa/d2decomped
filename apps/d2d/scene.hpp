@@ -194,6 +194,7 @@ struct Scene : GameData {
     // it as the player changes act.
     d2d::palette::Palette                    act_pal;
     std::array<d2d::palette::Palette, 32>    act_lit;   // act_pal at each light level (PL2 +0x400)
+    std::array<std::array<std::uint32_t, 256>, 32> act_lit_rgba{};   // act_lit as whole opaque pixels, one load each (lit floors)
     d2d::palette::Palette act_text_red;              // act_pal through PL2's text colour 1 shift (the last 13 x 256: FUN_004f64b0's colour)
     d2d::palette::Palette act_text_blue;             // ... and its text colour 3 (blue): a hovered list row, a mode-1 menu line
     d2d::palette::Palette act_text_grey;             // text colour 5 (grey): a skill icon that cannot take a point (FUN_004abf60)

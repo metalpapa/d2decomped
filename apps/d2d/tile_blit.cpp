@@ -165,6 +165,23 @@ void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
         const int left = (block.v0 * 16 + (block.v3 - block.v0) * row_in) >> 7, right = (block.v1 * 16 + (block.v2 - block.v1) * row_in) >> 7;
         return std::size_t(std::clamp(left + (((right - left) * along) >> 5), 0, 31));
     };
+    if (light.rgba && !hole && alpha_all >= 255) {
+        // Opaque floor (nearly all): one 32-bit store a pixel from the act's level tables, same clip as blit_tile_pixels.
+        const int screen_w = fb_width(framebuffer);
+        const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
+        const int y_begin = std::max(0, rows.begin - screen_y), y_end = std::min(std::abs(tile.height), std::min(int(kScreenHeight), rows.end) - screen_y);
+        if (x_begin >= x_end) return;
+        const auto& rgba = *light.rgba;
+        for (int y = y_begin; y < y_end; ++y) {
+            const auto* row = tile.pixels.data() + std::size_t(y) * std::size_t(tile.width);
+            auto* line = framebuffer.data() + (std::size_t(screen_y + y) * std::size_t(screen_w) + std::size_t(screen_x)) * 4;
+            for (int x = x_begin; x < x_end; ++x) {
+                const std::uint8_t idx = row[x];
+                if (idx) std::memcpy(line + std::size_t(x) * 4, &rgba[level(x - kIsoW / 2, y - tile.y_shift)][idx], 4);
+            }
+        }
+        return;
+    }
     blit_tile_pixels(framebuffer, tile, screen_x, screen_y, alpha_all, hole, rows, [&](int x, int y, std::uint8_t idx) {
         return pals[level(x - kIsoW / 2, y - tile.y_shift)][idx];   // from the diamond's top: block (0, 0) at x 64, y 0
     });

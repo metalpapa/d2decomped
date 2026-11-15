@@ -26,6 +26,20 @@
 #include <utility>
 #include <vector>
 
+namespace {
+// The 32-bit light tables Lighting::rgba points at, as load_act_palettes builds them (rewritten per call).
+const std::array<std::array<std::uint32_t, 256>, 32>* rgba_of(const std::array<d2d::palette::Palette, 32>& pals) {
+    static std::array<std::array<std::uint32_t, 256>, 32> table;
+    for (std::size_t level = 0; level < 32; ++level)
+        for (std::size_t i = 0; i < 256; ++i) {
+            const auto colour = pals[level][std::uint8_t(i)];
+            std::memcpy(&table[level][i], &colour, 4);
+            table[level][i] |= 0xFF000000u;
+        }
+    return &table;
+}
+}  // namespace
+
 namespace d2d::client::reference {
 
 void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
@@ -282,6 +296,7 @@ int main(int argc, char** argv) try {
         Lighting light;
         light.grid = make_grid(random);
         light.pal = &pals;
+        light.rgba = rgba_of(pals);
         const int cell_x = random.range(-6, 14), cell_y = random.range(-6, 14);
         const auto& pal = pals[std::size_t(random.range(0, 31))];
         switch (round % 4) {
@@ -319,6 +334,7 @@ int main(int argc, char** argv) try {
         Lighting light;
         light.grid = make_grid(random);
         light.pal = &pals;
+        light.rgba = rgba_of(pals);
         reference::blit_dt1_tile(expected, tile, pals[3], edge.screen_x, edge.screen_y, 255, nullptr);
         blit_dt1_tile(actual, tile, pals[3], edge.screen_x, edge.screen_y);
         reference::blit_dt1_shadow(expected, tile, pals[4], edge.screen_x, edge.screen_y);
@@ -346,6 +362,7 @@ int main(int argc, char** argv) try {
         Lighting light;
         light.grid = make_grid(random);
         light.pal = &pals;
+        light.rgba = rgba_of(pals);
         const bool lit = bands != 3;
         auto expected = make_framebuffer(random, width);
         auto actual = expected;
@@ -379,6 +396,7 @@ int main(int argc, char** argv) try {
                 light.grid.values[std::size_t(row * light.grid.grid_size + col)] = std::uint8_t(std::clamp(80 + col * 4 - row * 2, 0, 255));
         light.grid.origin_x = 0; light.grid.origin_y = 0;
         light.pal = &pals;
+        light.rgba = rgba_of(pals);
         const auto floor = make_tile(bench_random, 160, -80, 0);
         const auto wall = make_tile(bench_random, 160, 192, 0);
         auto framebuffer = make_framebuffer(bench_random, int(kScreenWidth));

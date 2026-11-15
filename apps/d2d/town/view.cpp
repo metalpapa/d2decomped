@@ -345,6 +345,7 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
     Lighting lighting;
     if (!view.level || scene.act_lit[31].entries().empty()) return lighting;
     lighting.pal = &scene.act_lit;
+    lighting.rgba = &scene.act_lit_rgba;
     // The grid covers the view's corners (half the width in cells over 80
     // plus half the height over 40, halved, in subtiles) and the widest light
     // (18) past them, not game.exe's 48 round the player (bugs.md #11;

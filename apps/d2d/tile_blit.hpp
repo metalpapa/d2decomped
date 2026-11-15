@@ -72,6 +72,7 @@ void blit_dt1_shadow(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Til
 struct Lighting {
     d2d::rules::LightGrid grid;
     const std::array<d2d::palette::Palette, 32>* pal = nullptr;
+    const std::array<std::array<std::uint32_t, 256>, 32>* rgba = nullptr;   // pal as opaque 32-bit pixels, for the fast opaque floor path
     int ambient = 255;                                     // the day's (or the level's) light, before any lamp
     int environment = 255;                                 // the environment's (+0xc, FUN_0061c0e0): what raised roofs take
     struct Stamp { int x, y, radius8; bool shadowed; };   // eighths of a subtile, as game.exe's light list (0x7b5668)
