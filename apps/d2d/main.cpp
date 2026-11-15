@@ -475,7 +475,8 @@ static Screen parse_screen(std::string_view text) {
 // where no refresh is known (headless). --fps-cap (d2d.cfg fps_cap) sets an
 // exact rate instead, slept precisely. The World still ticks at 25 Hz; the
 // frames between draw the units sliding (unit_slide.hpp).
-static int g_fps_cap = 0;   // frames a second, 0 = the display's refresh
+static int g_fps_cap = 0;   // frames a second, 0 = the display's refresh (--fps-cap / d2d.cfg fps_cap)
+static bool g_show_fps = false;   // d2d.cfg show_fps = 1: frames a second and render ms, top left
 struct FrameBudget { std::uint64_t nanos; bool exact; };
 inline FrameBudget frame_budget(SDL_Window* window) {
     if (g_fps_cap > 0) return { 1'000'000'000ull / std::uint64_t(g_fps_cap), true };
@@ -1809,6 +1810,21 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         }
 
         const std::uint32_t t_after_render = std::uint32_t(SDL_GetTicks());
+        if (g_show_fps && scene) {
+            // Counted over a second so the number is readable; render ms is the average of that second.
+            static std::uint32_t fps_start = t_after_render, fps_frames = 0, fps_render_sum = 0, fps_shown = 0, ms_shown = 0;
+            ++fps_frames;
+            fps_render_sum += t_after_render - t_after_input;
+            if (t_after_render - fps_start >= 1000) {
+                fps_shown = fps_frames * 1000 / (t_after_render - fps_start);
+                ms_shown = fps_render_sum / fps_frames;
+                fps_start = t_after_render; fps_frames = 0; fps_render_sum = 0;
+            }
+            const auto& font = scene->font_chat.line_height() > 0 ? scene->font_chat : scene->font;
+            const auto& pal = scene->act_pal.entries().empty() ? scene->pal : scene->act_pal;
+            font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, 6, 6 + font.line_height(),
+                             std::to_string(fps_shown) + " fps  " + std::to_string(ms_shown) + " ms", 199, 179, 119);
+        }
         // Skip GPU work when the window is minimized — Metal's swapchain
         // stalls if we keep pushing frames to a hidden drawable, which
         // is the classic macOS beachball trigger for SDL apps that
@@ -2259,6 +2275,7 @@ int main(int argc, char** argv) {
     g_start_cam_y    = start_cam_y;
     g_scale          = std::clamp(scale, 1, 8);   // cfg value isn't CLI-checked
     g_fps_cap        = std::clamp(fps_cap, 0, 1000);
+    g_show_fps       = cfg["show_fps"] == "1";
     g_fullscreen     = cfg["fullscreen"] == "1";
     g_widescreen     = cfg["widescreen"] == "1" || cli_widescreen || view_width > 0;
     g_forced_view_w  = std::clamp(view_width, 0, kMaxViewWidth);
