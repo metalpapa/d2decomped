@@ -1437,32 +1437,40 @@ static long available_kb() {
 static bool memory_tight() { const long kb = available_kb(); return kb >= 0 && kb < 220 * 1024; }
 
 void GameData::manage_art(std::span<const Level* const> active) const {
-    const auto ensure = [&](const Level* level) {
-        if (!level) return;
+    // `budget` tilesets at most (-1: all); returns whether any is still out.
+    const auto ensure = [&](const Level* level, int budget) {
+        if (!level) return false;
         auto& mutable_level = const_cast<Level&>(*level);
         int restored = 0;
+        bool missing = false;
         for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
             auto& archive = mutable_level.dt1s[i];
             if (archive.resident()) continue;
+            if (budget >= 0 && restored >= budget) { missing = true; break; }
             const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
             if (bytes && archive.restore_pixels(*bytes)) ++restored;
         }
         if (restored) d2d::log::info("level {}: art back ({} tilesets)", level->id, restored);
+        return missing;
     };
     static auto last = std::chrono::steady_clock::now() - std::chrono::seconds(10);
     static long kb = -1;
     const auto now = std::chrono::steady_clock::now();
     const bool check = now - last >= std::chrono::seconds(1);
     if (check) { last = now; kb = available_kb(); }
-    // Low on memory the neighbours' art stays out (their edges draw empty): reloading it all at once thrashed to a kill.
-    const bool roomy = kb < 0 || kb > 300 * 1024;
     std::unordered_set<const Level*> keep;
+    std::vector<const Level*> neighbours;
     for (const Level* level : active) {
         if (!level) continue;
         keep.insert(level);
-        if (roomy) for (const auto& link : level->nearby) keep.insert(link.level);
+        ensure(level, -1);
     }
-    for (const Level* level : keep) ensure(level);
+    for (const Level* level : active)
+        if (level)
+            for (const auto& link : level->nearby)
+                if (keep.insert(link.level).second) neighbours.push_back(link.level);
+    // The neighbours' edges show: one tileset a frame (all at once froze the game for seconds on low memory).
+    for (const Level* level : neighbours) if (ensure(level, 1)) break;
     if (!check || kb < 0 || kb > 450 * 1024) return;
     std::size_t freed = 0;
     const auto release = [&](const Level& level) {
