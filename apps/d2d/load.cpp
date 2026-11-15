@@ -457,6 +457,7 @@ std::optional<Scene> load_scene(const fs::path& data_dir, const fs::path& patch_
     const auto start_ms = d2d::log::ms();
     try {
         Scene scene{ std::move(*data) };
+        scene.lang = std::string(lang);
         const auto& mpqs = scene.mpqs;
         // Prefer the LoD title asset (fenced rogue camp at night). Classic
         // TitleScreen is only 4×3 sub-frames; LoD is the same layout.

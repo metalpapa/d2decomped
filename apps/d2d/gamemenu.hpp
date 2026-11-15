@@ -34,9 +34,12 @@ struct GameMenu {
     bool just_shown = false;               // TrimUI: the first frame's cursor jump (the pad's) must not hover-select a row
     int pent = 0;                          // pentspin's frame (0x7bc944)
     std::uint32_t pent_ms = 0;
-    std::array<std::array<int, 8>, 5> value{};   // each row's value, by its LoD row
+    std::array<std::array<int, 10>, 5> value{};   // each row's value, by its LoD row
     bool restore_automap = false, restore_mini = false;   // reopened after it (0x713058 b = 1)
     bool volume_changed = false;           // the sound sliders moved: the caller keeps them
+    static constexpr int kSpeedRow = 7;    // kVideo's "GameSpeed" row (TrimUI)
+    [[nodiscard]] int speed_step() const { return value[3][kSpeedRow]; }
+    [[nodiscard]] float game_speed() const { return 0.5f + float(speed_step()) * 0.1f; }   // 0.5x .. 1.5x, step 5 is normal
     bool video_changed = false;            // Gamma / Contrast moved: the caller keeps them in d2d.cfg
 
     GameMenu();

@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -78,6 +79,8 @@ constexpr Row kVideo[] = {                         // LoD 0x71875c (classic 0x71
     { 1, false, "Perspective", 2, 1, false, { "SmallOff", "SmallOn" } },
     { 2, false, "Gamma", 21, 10, true, {} },        // 155 on 55..255 (FUN_0047d230, FUN_0047cc90)
     { 2, false, "Contrast", 100, 99, true, {} },    // 100 on 0..100 (FUN_0047d2f0); both drive FUN_006be190
+    // TrimUI-only (user-requested): the game's speed, 0.5x to 1.5x in tenths, normal (1.0x) in the middle. No label art: drawn in the menu font (fallback_text).
+    { 2, false, "GameSpeed", 11, 5, false, {} },
     { 0, false, "SPrevious", 0, 0, false, {} },
 };
 constexpr Row kAutomap[] = {                       // LoD 0x71d734 (classic 0x71d720: no AutoMapMode)
@@ -125,6 +128,12 @@ void cels(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d:
     if (align == 1) x += -1 - int(total >> 1);
     else if (align == 2) x -= int(total);
     for (int i = 0; i < frames; ++i) cel(framebuffer, scene, sprite, i, x + 0x100 * i, bottom, half);
+}
+
+// Rows added by this port have no label art: their name, in the menu font.
+std::string_view fallback_text(std::string_view name, std::string_view lang) {
+    if (name == "GameSpeed") return lang == "ESP" ? "Velocidad" : "Game Speed";
+    return {};
 }
 
 const d2d::dc6::Sprite* text_image(const Scene& scene, std::string_view name) {
@@ -210,6 +219,7 @@ void GameMenu::changed(Audio& audio, int row) {
     // 47cda0 / 47cdf0: "Master Volume" / "Music Volume" = value * 100 / 20
     if (name == "Sound") audio.master_volume = value[std::size_t(menu)][std::size_t(row)] * 100 / 20;
     else if (name == "Music") audio.music_volume = value[std::size_t(menu)][std::size_t(row)] * 100 / 20;
+    else if (name == "GameSpeed") { video_changed = true; return; }   // read by main's clock, saved with the video options
     else if (name == "Gamma" || name == "Contrast") {
         const int steps = kMenus[menu].rows[std::size_t(row)].count;
         const int position = value[std::size_t(menu)][std::size_t(row)];
@@ -341,25 +351,41 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
         const int y = first + def.step * int(k), text_y = y + def.text_dy;
         const bool half = !enabled(row_index);              // draw mode 1, else 5
         const auto* label = text_image(scene, row.name);
+        const std::string_view fallback = label ? std::string_view{} : fallback_text(row.name, scene.lang);
+        const bool labelled = label || !fallback.empty();
+        const auto& text_font = scene.font30.line_height() > 0 ? scene.font30 : scene.font;
+        const auto draw_fallback = [&](int x, bool centred) {
+            const std::string text(fallback);
+            const int left = centred ? x - text_font.measure(text) / 2 : x;
+            text_font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene), left, text_y - text_font.line_height(), text, 199, 179, 119);
+        };
         if (row.type <= 0) {
             if (label) cels(framebuffer, scene, *label, kWidth / 2, text_y, 1, half);
+            else if (!fallback.empty()) draw_fallback(kWidth / 2, true);
         } else if (row.type == 1) {
             if (label) cels(framebuffer, scene, *label, kWidth / 2 - 230, text_y, 0, half);
             if (const auto* choice = text_image(scene, row.choices[std::size_t(value[std::size_t(menu)][std::size_t(row_index)])]))
                 cels(framebuffer, scene, *choice, kWidth / 2 + 230, text_y, 2, half);
         } else {
             if (label) cels(framebuffer, scene, *label, kWidth / 2 - 230, text_y, 0, half);
+            else if (!fallback.empty()) draw_fallback(kWidth / 2 - 230, false);
             // FUN_0047e260: the strip darkened either side of the knob, the
             // bar, the skull.
             const int val = value[std::size_t(menu)][std::size_t(row_index)];
             const int slider_y = y + def.slider_dy;
-            const int bar_x = kWidth / 2 + (label ? -0x3c : -0x91);
+            const int bar_x = kWidth / 2 + (labelled ? -0x3c : -0x91);
             const int knob_x = bar_x + knob(row.count, val);
-            const int strip_x = kWidth / 2 + (label ? -0x3b : -0x90), filled = knob_x - bar_x + 12;
+            const int strip_x = kWidth / 2 + (labelled ? -0x3b : -0x90), filled = knob_x - bar_x + 12;
             darken(framebuffer, strip_x, slider_y - 30, filled, 30, row.centred ? 1 : 2);
             darken(framebuffer, strip_x + filled, slider_y - 30, 0x121 - filled, 30, row.centred ? 1 : 0);
-            cels(framebuffer, scene, row.centred ? scene.opt_bar_c : scene.opt_bar, label ? kWidth / 2 + 0xe6 : kWidth / 2, slider_y, label ? 2 : 1, half);
+            cels(framebuffer, scene, row.centred ? scene.opt_bar_c : scene.opt_bar, labelled ? kWidth / 2 + 0xe6 : kWidth / 2, slider_y, labelled ? 2 : 1, half);
             cel(framebuffer, scene, scene.opt_skull, 0, knob_x, slider_y - (row.centred ? 0 : 1) - 1, half);
+            if (row.name == "GameSpeed") {   // the speed itself, since the bar has no scale
+                char speed[8];
+                const int tenths = 5 + val;   // 0.5x .. 1.5x
+                std::snprintf(speed, sizeof speed, "%d.%dx", tenths / 10, tenths % 10);
+                text_font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene), kWidth / 2 + 0xe6 + 12, text_y - text_font.line_height(), speed, 199, 179, 119);
+            }
         }
     }
     // The pentagrams either side of the selection, spinning opposite ways.

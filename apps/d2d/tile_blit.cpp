@@ -63,6 +63,23 @@ void blit_tile_pixels(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Ti
     }
 }
 
+// An opaque tile through one 32-bit light table (Lighting::rgba[level]): one store a pixel, no per-tile table.
+void blit_tile_lut32(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const std::array<std::uint32_t, 256>& lut,
+                     int screen_x, int screen_y, Rows rows) {
+    const int screen_w = fb_width(framebuffer);
+    const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
+    const int y_begin = std::max(0, rows.begin - screen_y), y_end = std::min(std::abs(tile.height), std::min(int(kScreenHeight), rows.end) - screen_y);
+    if (x_begin >= x_end) return;
+    for (int y = y_begin; y < y_end; ++y) {
+        const auto* row = tile.pixels.data() + std::size_t(y) * std::size_t(tile.width);
+        auto* line = framebuffer.data() + (std::size_t(screen_y + y) * std::size_t(screen_w) + std::size_t(screen_x)) * 4;
+        for (int x = x_begin; x < x_end; ++x) {
+            const std::uint8_t idx = row[x];
+            if (idx) std::memcpy(line + std::size_t(x) * 4, &lut[idx], 4);
+        }
+    }
+}
+
 }  // namespace
 
 void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
@@ -127,7 +144,12 @@ void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
                        int screen_x, int screen_y, int cell_x, int cell_y, int alpha_all , const Hole* hole, Rows rows) {
     // A floor whose DT1 material has 0x100 is drawn at full light
     // (FUN_004de410: its table all 0xff; lava).
-    if (tile.material_flags & 0x100) { blit_dt1_tile(framebuffer, tile, (*light.pal)[31], screen_x, screen_y, alpha_all, hole, rows); return; }
+    const bool plain = light.rgba && !hole && alpha_all >= 255;   // opaque: the 32-bit tables apply
+    if (tile.material_flags & 0x100) {
+        if (plain) blit_tile_lut32(framebuffer, tile, (*light.rgba)[31], screen_x, screen_y, rows);
+        else blit_dt1_tile(framebuffer, tile, (*light.pal)[31], screen_x, screen_y, alpha_all, hole, rows);
+        return;
+    }
     // FUN_004ddef0: an 8 x 8 table of the grid round the tile, entry (col,
     // row) the subtile (x - 1 + col, y - 1 + row) from the cell's.
     std::array<int, 64> table{};
@@ -139,7 +161,11 @@ void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
             low = std::min(low, value); high = std::max(high, value);
         }
     const auto& pals = *light.pal;
-    if (low >> 3 == high >> 3) { blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole, rows); return; }
+    if (low >> 3 == high >> 3) {
+        if (plain) blit_tile_lut32(framebuffer, tile, (*light.rgba)[std::size_t(low >> 3)], screen_x, screen_y, rows);
+        else blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole, rows);
+        return;
+    }
     // Each 32 x 16 block (subtile (bx, by)) as the software driver's block
     // callback FUN_004f8b80 takes it: flat at A >> 3 when its four entries
     // barely differ, else four corner levels, each the mean of four entries
@@ -224,9 +250,35 @@ void blit_dt1_wall_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
         low = std::min(low, lights[k]); high = std::max(high, lights[k]);
     }
     const auto& pals = *light.pal;
-    if (low >> 3 == high >> 3) { blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole); return; }
+    const bool plain = light.rgba && !hole && alpha_all >= 255;
+    if (low >> 3 == high >> 3) {
+        if (plain) blit_tile_lut32(framebuffer, tile, (*light.rgba)[std::size_t(low >> 3)], screen_x, screen_y, {});
+        else blit_dt1_tile(framebuffer, tile, pals[std::size_t(low >> 3)], screen_x, screen_y, alpha_all, hole);
+        return;
+    }
     // A block (FUN_004f8120): flat at the left light's level when its two
     // lights differ by under 10, else the ramp between their levels.
+    const auto wall_level = [&](int x) {
+        const int column = std::min(x / 32, 4), along = x - column * 32;
+        const int left = lights[std::size_t(column)], right = lights[std::size_t(column) + 1];
+        return std::size_t(std::abs(right - left) < 10 ? left >> 3 : (left >> 3) + ((((right >> 3) - (left >> 3)) * along) >> 5));
+    };
+    if (plain) {
+        const int screen_w = fb_width(framebuffer);
+        const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
+        const int y_begin = std::max(0, -screen_y), y_end = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
+        if (x_begin >= x_end) return;
+        const auto& rgba = *light.rgba;
+        for (int y = y_begin; y < y_end; ++y) {
+            const auto* row = tile.pixels.data() + std::size_t(y) * std::size_t(tile.width);
+            auto* line = framebuffer.data() + (std::size_t(screen_y + y) * std::size_t(screen_w) + std::size_t(screen_x)) * 4;
+            for (int x = x_begin; x < x_end; ++x) {
+                const std::uint8_t idx = row[x];
+                if (idx) std::memcpy(line + std::size_t(x) * 4, &rgba[wall_level(x)][idx], 4);
+            }
+        }
+        return;
+    }
     blit_tile_pixels(framebuffer, tile, screen_x, screen_y, alpha_all, hole, {}, [&](int x, int, std::uint8_t idx) {
         const int column = std::min(x / 32, 4), along = x - column * 32;
         const int left = lights[std::size_t(column)], right = lights[std::size_t(column) + 1];

@@ -784,6 +784,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         d2d::userdir::load_cfg(town.cfg_file, cfg);
         town.hireling_hint = cfg["popup_hireling"] != "1";   // FUN_004939b0 reads the registry's PopupHireling each game
         town.automap_items = cfg["automap_items"] == "1";
+        town.game_menu.value[3][GameMenu::kSpeedRow] = cfg["game_speed"].empty() ? 5 : std::clamp(std::atoi(cfg["game_speed"].c_str()), 0, 10);
     }
     if (g_click_keys) town.click_keys = g_click_bindings;
     if (!g_no_save) town.key_dir = save_dir;                 // <name>.key and default.key beside the saves, as game.exe keeps them
@@ -813,7 +814,6 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         town.enter();
     }
     std::array<bool, 8> frontend_played{};   // title-screen ambience picks
-    std::uint32_t last_ms = 0;
 
     // Watchdog — writes to stderr the second the main thread stops
     // updating its heartbeat. Atomic reads only; no SDL calls (would
@@ -1233,6 +1233,13 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         current_phase.store(std::uint32_t(MainPhase::Render),
                             std::memory_order_relaxed);
         const auto now_ms = std::uint32_t(SDL_GetTicks() - start_ticks);
+        // The game's own clock: real time, times the Video Options' Game Speed while a single-player game is on
+        // (a joined game keeps real time; the host's clock rules there).
+        static std::uint32_t prev_real_ms = now_ms, game_last_ms = 0;
+        static double game_clock_ms = 0.0;
+        game_clock_ms += double(now_ms - prev_real_ms) * (screen == Screen::InGame && !town.net_game ? double(town.game_menu.game_speed()) : 1.0);
+        prev_real_ms = now_ms;
+        const auto game_now_ms = std::uint32_t(game_clock_ms);
         // Level music and ambience belong to the game screen.
         if (screen != Screen::InGame && (audio.music.sound > 0 || audio.music_old.src)) {
             audio.stop(audio.music);
@@ -1660,7 +1667,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                 // The act's palette follows the player's level.
                 if (const int act = town.view_act(); act != scene->palette_act)
                     load_act_palettes(*scene, scene->mpqs, act);
-                town.update(framebuffer, mouse, keys_this_frame, screen, audio, now_ms, last_ms);
+                town.update(framebuffer, mouse, keys_this_frame, screen, audio, game_now_ms, game_last_ms);
                 // A panel key moved the cursor with the view (FUN_00468770's SetCursorPos):
                 // the game's copy, and the OS cursor unless a pad drives it.
                 if (const auto moved = std::exchange(town.cursor_move, std::nullopt)) {
@@ -1860,7 +1867,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         }
         const std::uint32_t t_after_present = std::uint32_t(SDL_GetTicks());
         if (++frame_count == 1) d2d::log::info("First frame presented at {} ms after launch.", d2d::log::ms());
-        last_ms = now_ms;
+        game_last_ms = game_now_ms;
         // Per-frame diagnostics — break the frame into `input` (SDL event
         // pump + devctl; macOS blocks in here during window drags / focus
         // changes), `render` (our CPU blits into the framebuffer) and

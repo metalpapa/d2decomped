@@ -395,8 +395,9 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
             game_menu.volume_changed = false;
             if (game_menu.video_changed && !cfg_file.empty()
                 && !d2d::userdir::save_cfg(cfg_file, { { "gamma", std::to_string(d2d::palette::Palette::gamma()) },
-                                                      { "contrast", std::to_string(d2d::palette::Palette::contrast()) } }))
-                d2d::log::warn("d2d.cfg: gamma and contrast not saved");
+                                                      { "contrast", std::to_string(d2d::palette::Palette::contrast()) },
+                                                      { "game_speed", std::to_string(game_menu.speed_step()) } }))
+                d2d::log::warn("d2d.cfg: gamma, contrast and game speed not saved");
             game_menu.video_changed = false;
             if (action != GameMenu::kNone) close_game_menu();
             if (action == GameMenu::kSave && !lan_client) {  // TrimUI-only row; a joiner's save() would leave the game
