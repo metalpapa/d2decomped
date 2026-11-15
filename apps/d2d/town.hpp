@@ -471,6 +471,7 @@ struct Town {
     [[nodiscard]] std::optional<PadFocus> pad_focus() const;
     [[nodiscard]] std::vector<pad::Point> pad_snap_points() const;
     [[nodiscard]] const d2d::d2s::Item* bag_at(int mouse_x, int mouse_y) const;
+    [[nodiscard]] const d2d::d2s::Item* stash_at(int mouse_x, int mouse_y) const;   // the stash item under the cursor, the stash open
     void pad_trade(int mouse_x, int mouse_y);
     void pad_drop(int mouse_x, int mouse_y);
     void drive_pad_hold(Mouse& mouse, float seconds);

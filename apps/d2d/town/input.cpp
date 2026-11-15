@@ -655,6 +655,18 @@ auto Town::bag_at(int mouse_x, int mouse_y) const -> const d2d::d2s::Item* {
         return nullptr;
     }
 
+// The stash item under the cursor, or nullptr. Only with the stash open (not the cube).
+auto Town::stash_at(int mouse_x, int mouse_y) const -> const d2d::d2s::Item* {
+        if (!scene || !stash_open || cube_open) return nullptr;
+        const auto& layout = scene->stash_layout[character.expansion ? 1 : 0];
+        for (const auto& item : character.items) {
+            if (item.location != d2d::d2s::item_location::kStored || item.panel != d2d::d2s::item_panel::kStash) continue;
+            const auto rect = grid_rect(*scene, layout, item);
+            if (mouse_x >= rect[0] && mouse_x < rect[0] + rect[2] && mouse_y >= rect[1] && mouse_y < rect[1] + rect[3]) return &item;
+        }
+        return nullptr;
+    }
+
 // A store's X buys the stock under the cursor. Selling is Hold A, so X does not sell.
 auto Town::pad_trade(int mouse_x, int mouse_y) -> void {
         if (store.npc < 0 || !scene) return;
@@ -700,6 +712,11 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
         query.hand_empty = !held;
         query.stow = held && store.npc < 0 && identify_with < 0 && !use_item.open();
         query.bag = item != nullptr;
+        // Stash open, hand empty, no shop: an item under the cursor in either panel is sent to the other one.
+        const d2d::d2s::Item* mover = nullptr;
+        if (stash_open && !cube_open && !held && store.npc < 0 && identify_with < 0 && !use_item.open() && pad_drops_from_bag(net_game != nullptr))
+            mover = item ? item : stash_at(mouse.x, mouse.y);
+        query.move = mover != nullptr;
         query.store_mode = store.mode;
         if (item && scene && world.game_data) {
             query.sellable = d2d::rules::sellable(scene->rules, *item);
@@ -713,8 +730,8 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
         PadHoldKind kind = pad_hold_button(query, pad_south_down, pad_rt_down);
         if (!pad_south_down && !pad_rt_down && pad_hold.armed) kind = PadHoldKind(pad_hold.context);
         const bool eligible = kind != PadHoldKind::None;
-        const int item_id = kind == PadHoldKind::Stow && held ? held->id : item ? item->id : -1;
-        if (kind == PadHoldKind::Stow) pad_hold.delay = pad::kHoldEquipSeconds;
+        const int item_id = kind == PadHoldKind::Stow && held ? held->id : kind == PadHoldKind::Move && mover ? mover->id : item ? item->id : -1;
+        if (kind == PadHoldKind::Stow || kind == PadHoldKind::Move) pad_hold.delay = pad::kHoldEquipSeconds;
         else if (kind == PadHoldKind::Sell) pad_hold.delay = pad::kHoldSellSeconds;
         else if (kind == PadHoldKind::Equip) pad_hold.delay = pad::kHoldEquipSeconds;
         else pad_hold.delay = pad::kHoldFillSeconds;
@@ -749,9 +766,10 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const auto use = item_use(*item);
             if (!use.label.empty()) pad_hold_text = (use.kind == ItemUseKind::None ? "" : label_of(pad::Action::Interact) + " . ") + std::string(use.label) + "  ";
         }
-        if (pad_playing && kind == PadHoldKind::Stow) {
+        if (pad_playing && (kind == PadHoldKind::Stow || kind == PadHoldKind::Move)) {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
-            pad_hold_text = std::string("Hold ") + std::string(pad::label(pad_family, pad::Button::South)) + " to store";
+            const bool out_of_stash = kind == PadHoldKind::Move && mover && mover != item;
+            pad_hold_text = std::string("Hold ") + std::string(pad::label(pad_family, pad::Button::South)) + (out_of_stash ? " to take out" : " to store");
         } else if (pad_shows_hold_cue(pad_playing, can_potion, can_equip, can_sell)) {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
             const std::string_view aye = pad::label(pad_family, pad::Button::South);
@@ -775,6 +793,20 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const auto [width, height] = d2d::rules::item_size(scene->rules, held->code);
             if (const auto [column, row] = d2d::rules::free_spot(scene->rules, placed, layout.cols, layout.rows, width, height, true); column >= 0)
                 send(cmd::ToGrid{ panel, column, row });
+        } else if (step == hold_confirm::Step::Act && kind == PadHoldKind::Move && mover && scene) {
+            // Bag -> stash or stash -> bag, into the first free spot there: pick it up, then put it down (as pad_drop does).
+            const bool to_stash = mover == item;
+            const int dest = to_stash ? d2d::d2s::item_panel::kStash : d2d::d2s::item_panel::kInventory;
+            const auto& layout = to_stash ? scene->stash_layout[character.expansion ? 1 : 0] : scene->inv_layout[std::size_t(std::max(character.character_class, 0))];
+            std::vector<const d2d::d2s::Item*> placed;
+            for (const auto& stored : character.items)
+                if (stored.location == d2d::d2s::item_location::kStored && stored.panel == dest) placed.push_back(&stored);
+            const auto [width, height] = d2d::rules::item_size(scene->rules, mover->code);
+            const int mover_id = mover->id;
+            if (const auto [column, row] = d2d::rules::free_spot(scene->rules, placed, layout.cols, layout.rows, width, height, true); column >= 0) {
+                send(cmd::ToCursor{ mover_id });
+                send(cmd::ToGrid{ dest, column, row });
+            }
         } else if (step == hold_confirm::Step::Act && item) {
             if (kind == PadHoldKind::Sell) send(cmd::Sell{ item->id });
             else if (kind == PadHoldKind::Equip) send(cmd::EquipFromBag{ item->id });
