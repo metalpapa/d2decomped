@@ -653,6 +653,8 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
             if (actor->store.npc >= 0 && !actor->store.gamble) stocks[{ level->id, actor->store.npc }] = actor->store;   // what the trade left in the vendor's stock
             return;
         }
+        // A held right cast kept repeating while A was down (any skill command counts as held).
+        if (const auto* use = std::get_if<cmd::UseSkill>(&command); use && actor->attack_mon >= 0 && use->left != actor->attack_left) actor->attack_mon = -1;
         if (actor->pmode >= 0 && !actor->ghost) return;   // busy (a ghost, dead, only walks: the tick lets nothing else through)
         const bool in_moor = !in_town(level);
         auto walk_to = [&](float x, float y, bool fresh) {
@@ -782,6 +784,7 @@ auto World::apply(const Command& command, std::uint32_t now_ms) -> void {
             actor->interact_npc = actor->pick_item = -1;
             actor->attack_mon = monster_index;
             actor->attack_skill = use_skill.skill;
+            actor->attack_left = use_skill.left;
             actor->attack_charge = entry;
         }
     }
