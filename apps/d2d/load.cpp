@@ -610,7 +610,7 @@ void load_act_palettes(Scene& scene, const d2d::mpq::Stack& mpqs, int act) {
     const auto dir = std::format(R"(data\global\palette\ACT{}\)", std::clamp(act, 0, 4) + 1);
     scene.act_pal = {};                      // a missing file leaves none, never the last act's
     scene.act_lit = {};
-    scene.act_lit_rgba = {};
+    scene.act_lit_rgba_valid = false;
     scene.act_text_red = {};
     scene.act_text_blue = {};
     scene.act_text_grey = {};
@@ -623,10 +623,6 @@ void load_act_palettes(Scene& scene, const d2d::mpq::Stack& mpqs, int act) {
             for (std::size_t i = 0; i < 256; ++i) entries[i] = scene.act_pal.entries()[std::uint8_t((*bytes)[0x400 + level * 256 + i])];
             entries[0].a = 0;
             scene.act_lit[level] = d2d::palette::Palette(entries);
-            for (std::size_t i = 0; i < 256; ++i) {
-                std::memcpy(&scene.act_lit_rgba[level][i], &entries[i], 4);
-                scene.act_lit_rgba[level][i] |= 0xFF000000u;
-            }
         }
     // The PL2 ends in 13 text colours' index shifts (256 each); 1 is red, 3 blue.
     if (auto bytes = mpqs.try_read(dir + "Pal.pl2"); bytes && bytes->size() >= 0x400 + 13 * 256) {

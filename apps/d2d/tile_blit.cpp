@@ -114,6 +114,15 @@ void blit_dt1_shadow(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Til
     }
 }
 
+void fill_light_rgba(const std::array<d2d::palette::Palette, 32>& pals, std::array<std::array<std::uint32_t, 256>, 32>& out) {
+    for (std::size_t level = 0; level < 32; ++level)
+        for (std::size_t i = 0; i < 256; ++i) {
+            const auto colour = pals[level][std::uint8_t(i)];
+            std::memcpy(&out[level][i], &colour, 4);
+            out[level][i] |= 0xFF000000u;
+        }
+}
+
 void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const Lighting& light,
                        int screen_x, int screen_y, int cell_x, int cell_y, int alpha_all , const Hole* hole, Rows rows) {
     // A floor whose DT1 material has 0x100 is drawn at full light

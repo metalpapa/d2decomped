@@ -345,6 +345,11 @@ Lighting frame_light(const Scene& scene, const View& view, float cam_x, float ca
     Lighting lighting;
     if (!view.level || scene.act_lit[31].entries().empty()) return lighting;
     lighting.pal = &scene.act_lit;
+    if (const auto& ramp = d2d::palette::video_ramp().level; !scene.act_lit_rgba_valid || scene.act_lit_rgba_ramp != ramp) {
+        fill_light_rgba(scene.act_lit, scene.act_lit_rgba);
+        scene.act_lit_rgba_ramp = ramp;
+        scene.act_lit_rgba_valid = true;
+    }
     lighting.rgba = &scene.act_lit_rgba;
     // The grid covers the view's corners (half the width in cells over 80
     // plus half the height over 40, halved, in subtiles) and the widest light

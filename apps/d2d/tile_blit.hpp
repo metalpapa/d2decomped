@@ -93,6 +93,9 @@ struct Lighting {
     [[nodiscard]] int unit_at(float x, float y) const { return grid.at(int(std::floor(x * 5)), int(std::floor(y * 5))); }
 };
 
+// Lighting::rgba for `pals`: every colour through the video ramp, opaque.
+void fill_light_rgba(const std::array<d2d::palette::Palette, 32>& pals, std::array<std::array<std::uint32_t, 256>, 32>& out);
+
 // A floor (or a flat roof) of cell (cell_x, cell_y), lit as game.exe's
 // software modes do (FUN_004ddef0's 8 x 8 table round the cell, the block
 // callback FUN_004f8b80 per 32 x 16 block; lighting.md). One level for the

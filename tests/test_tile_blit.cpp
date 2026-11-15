@@ -30,12 +30,7 @@ namespace {
 // The 32-bit light tables Lighting::rgba points at, as load_act_palettes builds them (rewritten per call).
 const std::array<std::array<std::uint32_t, 256>, 32>* rgba_of(const std::array<d2d::palette::Palette, 32>& pals) {
     static std::array<std::array<std::uint32_t, 256>, 32> table;
-    for (std::size_t level = 0; level < 32; ++level)
-        for (std::size_t i = 0; i < 256; ++i) {
-            const auto colour = pals[level][std::uint8_t(i)];
-            std::memcpy(&table[level][i], &colour, 4);
-            table[level][i] |= 0xFF000000u;
-        }
+    d2d::client::fill_light_rgba(pals, table);
     return &table;
 }
 }  // namespace
@@ -272,6 +267,7 @@ std::vector<std::uint8_t> make_framebuffer(Random& random, int width) {
 }  // namespace
 
 int main(int argc, char** argv) try {
+    d2d::palette::Palette::set_ramp(80, 60);   // not the default: a table built from raw colours would differ
     Random random{ 12345 };
     const auto pals = make_palettes(random);
     int cases = 0;
