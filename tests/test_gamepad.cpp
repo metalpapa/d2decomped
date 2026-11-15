@@ -63,10 +63,8 @@ int main() try {
         assert(!actions.click_press && actions.click_down);
         actions = mapper.step(Sample{}, Context::Game, 0.016f);
         assert(actions.click_release && !actions.click_down);
-        Sample trigger; trigger.right_trigger = 0.8f;
-        assert(mapper.step(trigger, Context::Game, 0.016f).click_press);
-        trigger.right_trigger = 0.4f;   // still held: between the press and release thresholds
-        assert(mapper.step(trigger, Context::Game, 0.016f).click_down);
+        Sample trigger; trigger.right_trigger = 0.8f;   // TrimUI default: the right trigger is the skill picker, not a click
+        assert(!mapper.step(trigger, Context::Game, 0.016f).click_press);
     }
     // A pad that goes away (an empty Sample) lets go of a held click and a walk.
     {

@@ -698,6 +698,7 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
         query.identify = identify_with >= 0;
         query.imbue = use_item.open();
         query.hand_empty = !held;
+        query.stow = held && store.npc < 0 && identify_with < 0 && !use_item.open();
         query.bag = item != nullptr;
         query.store_mode = store.mode;
         if (item && scene && world.game_data) {
@@ -712,8 +713,9 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
         PadHoldKind kind = pad_hold_button(query, pad_south_down, pad_rt_down);
         if (!pad_south_down && !pad_rt_down && pad_hold.armed) kind = PadHoldKind(pad_hold.context);
         const bool eligible = kind != PadHoldKind::None;
-        const int item_id = item ? item->id : -1;
-        if (kind == PadHoldKind::Sell) pad_hold.delay = pad::kHoldSellSeconds;
+        const int item_id = kind == PadHoldKind::Stow && held ? held->id : item ? item->id : -1;
+        if (kind == PadHoldKind::Stow) pad_hold.delay = pad::kHoldEquipSeconds;
+        else if (kind == PadHoldKind::Sell) pad_hold.delay = pad::kHoldSellSeconds;
         else if (kind == PadHoldKind::Equip) pad_hold.delay = pad::kHoldEquipSeconds;
         else pad_hold.delay = pad::kHoldFillSeconds;
         const bool button_down = pad_south_down || (pad_rt_down && kind == PadHoldKind::FillOne);
@@ -747,7 +749,10 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const auto use = item_use(*item);
             if (!use.label.empty()) pad_hold_text = (use.kind == ItemUseKind::None ? "" : label_of(pad::Action::Interact) + " . ") + std::string(use.label) + "  ";
         }
-        if (pad_shows_hold_cue(pad_playing, can_potion, can_equip, can_sell)) {
+        if (pad_playing && kind == PadHoldKind::Stow) {
+            if (tracking) pad_hold_fraction = pad_hold.fraction();
+            pad_hold_text = std::string("Hold ") + std::string(pad::label(pad_family, pad::Button::South)) + " to store";
+        } else if (pad_shows_hold_cue(pad_playing, can_potion, can_equip, can_sell)) {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
             const std::string_view aye = pad::label(pad_family, pad::Button::South);
             const std::string_view trigger = pad::label(pad_family, pad::Button::RightTrigger);
@@ -759,6 +764,17 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const auto click = item_cursor_command(*scene, character.items, held, std::max(character.character_class, 0),
                                                     { inv_open, stash_open, cube_open, belt_open, character.expansion }, mouse.x, mouse.y);
             if (click.cmd) send(*click.cmd);
+        } else if (step == hold_confirm::Step::Act && kind == PadHoldKind::Stow && held && scene) {
+            // The first free spot of the panel the cursor is over: the stash on the left, else the bag.
+            const bool in_stash = stash_open && !cube_open && mouse.x >= kCharPanelX && mouse.x < kCharPanelX + 320;
+            const auto& layout = in_stash ? scene->stash_layout[character.expansion ? 1 : 0] : scene->inv_layout[std::size_t(std::max(character.character_class, 0))];
+            const int panel = in_stash ? d2d::d2s::item_panel::kStash : d2d::d2s::item_panel::kInventory;
+            std::vector<const d2d::d2s::Item*> placed;
+            for (const auto& stored : character.items)
+                if (stored.location == d2d::d2s::item_location::kStored && stored.panel == panel) placed.push_back(&stored);
+            const auto [width, height] = d2d::rules::item_size(scene->rules, held->code);
+            if (const auto [column, row] = d2d::rules::free_spot(scene->rules, placed, layout.cols, layout.rows, width, height, true); column >= 0)
+                send(cmd::ToGrid{ panel, column, row });
         } else if (step == hold_confirm::Step::Act && item) {
             if (kind == PadHoldKind::Sell) send(cmd::Sell{ item->id });
             else if (kind == PadHoldKind::Equip) send(cmd::EquipFromBag{ item->id });

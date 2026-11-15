@@ -12,7 +12,7 @@
 
 namespace d2d::client {
 
-enum class PadHoldKind { None, Sell, Fill, Equip, FillOne };
+enum class PadHoldKind { None, Sell, Fill, Equip, FillOne, Stow };
 
 struct PadHoldQuery {
     bool shop = false;
@@ -24,6 +24,7 @@ struct PadHoldQuery {
     bool sellable = false;
     bool potion = false;
     bool equippable = false;
+    bool stow = false;                // an item in hand, no shop: hold A puts it in the first free spot
     int store_mode = 0;               // 0 trade, 1 buy, 2 sell, 3 repair
 };
 
@@ -39,6 +40,7 @@ struct PadHoldQuery {
 }
 
 [[nodiscard]] inline PadHoldKind pad_hold_kind(const PadHoldQuery& query) {
+    if (query.stow) return PadHoldKind::Stow;
     if (!query.hand_empty || !query.bag || query.identify || query.imbue) return PadHoldKind::None;
     if (query.shop) {
         if (query.gamble || query.store_mode == 1 || query.store_mode == 3 || !query.sellable) return PadHoldKind::None;
