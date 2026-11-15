@@ -298,6 +298,11 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
         // Levels: finished builds come in; the ones next to the player's
         // start building when it changes (GameData::level).
         game_data->poll_levels();
+        if (game_data->tile_pixels) {                      // memory: art of the levels out of sight
+            std::vector<const Level*> active{ level };
+            each_player([&](Player& player) { if (player.on_level) active.push_back(player.on_level); });
+            game_data->manage_art(active);
+        }
         if (!in_town(level)) each_player([](Player& player) { player.greeted.clear(); });   // FUN_004b3e10: out of town, all greet again
         fight.spawning.game_quests = game_bits;          // the town markers' inits read them as rooms come up
         // a3q7: the Dark Wanderer gone (ai/act3.cpp) marks every player in act 3 (FUN_005bd260: word 0x20 bit 0, if missing).

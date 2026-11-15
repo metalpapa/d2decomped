@@ -786,7 +786,7 @@ LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::Outdoo
     for (const auto& [file_key, file] : files) {
         auto bytes = mpqs.try_read(R"(data\global\tiles\)" + ds1_path_to_mpq(file));
         if (!bytes) continue;
-        try { dt1s.archive[file_key] = &level.dt1s.emplace_back(*bytes, pixels); } catch (const std::exception& error) { d2d::log::warn("level {}: {}: {}", level.id, file, error.what()); }
+        try { dt1s.archive[file_key] = &level.dt1s.emplace_back(*bytes, pixels); level.dt1_paths.push_back(R"(data\global\tiles\)" + ds1_path_to_mpq(file)); } catch (const std::exception& error) { d2d::log::warn("level {}: {}: {}", level.id, file, error.what()); }
     }
     return dt1s;
 }
@@ -1422,13 +1422,48 @@ const Level* GameData::level(int id) const {
 // (a long session fell to 3 fps with the system's memory gone). With under 220 MB
 // available, only the level a player walks into is built (on demand, a stall), not
 // the ones next to it. Linux only; elsewhere memory is never tight.
-static bool memory_tight() {
+static long available_kb() {
 #ifdef __linux__
     if (std::ifstream meminfo("/proc/meminfo"); meminfo)
         for (std::string line; std::getline(meminfo, line);)
-            if (line.starts_with("MemAvailable:")) return std::atol(line.c_str() + 13) < 220 * 1024;   // kB
+            if (line.starts_with("MemAvailable:")) return std::atol(line.c_str() + 13);
 #endif
-    return false;
+    return -1;
+}
+static bool memory_tight() { const long kb = available_kb(); return kb >= 0 && kb < 220 * 1024; }
+
+void GameData::manage_art(std::span<const Level* const> active) const {
+    const auto ensure = [&](const Level* level) {
+        if (!level) return;
+        auto& mutable_level = const_cast<Level&>(*level);
+        for (std::size_t i = 0; i < mutable_level.dt1s.size() && i < mutable_level.dt1_paths.size(); ++i) {
+            auto& archive = mutable_level.dt1s[i];
+            if (archive.resident()) continue;
+            const auto bytes = mpqs.try_read(mutable_level.dt1_paths[i]);
+            if (bytes && archive.restore_pixels(*bytes)) d2d::log::info("level {}: art back ({})", level->id, mutable_level.dt1_paths[i]);
+        }
+    };
+    std::unordered_set<const Level*> keep;
+    for (const Level* level : active) {
+        if (!level) continue;
+        keep.insert(level);
+        for (const auto& link : level->nearby) keep.insert(link.level);
+    }
+    for (const Level* level : keep) ensure(level);
+    static auto last = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last < std::chrono::seconds(1)) return;
+    last = now;
+    const long kb = available_kb();
+    if (kb < 0 || kb > 450 * 1024) return;
+    std::size_t freed = 0;
+    const auto release = [&](const Level& level) {
+        if (keep.contains(&level)) return;
+        for (auto& archive : const_cast<Level&>(level).dt1s) if (archive.resident()) freed += archive.release_pixels();
+    };
+    release(town);
+    for (const auto& entry : levels) release(*entry.second);
+    if (freed) d2d::log::info("memory low ({} MB free): released {} MB of tile art", kb / 1024, freed >> 20);
 }
 
 // The levels a player on `l` may reach next: the act's levels touching

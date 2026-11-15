@@ -31,6 +31,7 @@ namespace {
 template <class ColourAt>
 void blit_tile_pixels(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile,
                       int screen_x, int screen_y, int alpha_all, const Hole* hole, Rows rows, ColourAt colour_at) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     const int screen_w = fb_width(framebuffer);
     const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
     const int y_begin = std::max(0, rows.begin - screen_y), y_end = std::min(std::abs(tile.height), std::min(int(kScreenHeight), rows.end) - screen_y);
@@ -66,6 +67,7 @@ void blit_tile_pixels(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Ti
 // An opaque tile through one 32-bit light table (Lighting::rgba[level]): one store a pixel, no per-tile table.
 void blit_tile_lut32(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const std::array<std::uint32_t, 256>& lut,
                      int screen_x, int screen_y, Rows rows) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     const int screen_w = fb_width(framebuffer);
     const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
     const int y_begin = std::max(0, rows.begin - screen_y), y_end = std::min(std::abs(tile.height), std::min(int(kScreenHeight), rows.end) - screen_y);
@@ -86,6 +88,7 @@ void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
                    const d2d::dt1::Tile& tile,
                    const d2d::palette::Palette& pal,
                    int screen_x, int screen_y, int alpha_all , const Hole* hole, Rows rows) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     // Opaque through one palette (most floors): each index is a whole 32-bit
     // pixel, alpha 0xFF as blit_tile_pixels writes it, so one store a pixel.
     if (!hole && alpha_all >= 255) {
@@ -114,6 +117,7 @@ void blit_dt1_tile(std::vector<std::uint8_t>& framebuffer,
 
 void blit_dt1_shadow(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile,
                      const d2d::palette::Palette& pal, int screen_x, int screen_y) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     const int screen_w = fb_width(framebuffer);
     const int x_begin = std::max(0, -screen_x), x_end = std::min(tile.width, screen_w - screen_x);
     const int y_begin = std::max(0, -screen_y), y_end = std::min(std::abs(tile.height), int(kScreenHeight) - screen_y);
@@ -142,6 +146,7 @@ void fill_light_rgba(const std::array<d2d::palette::Palette, 32>& pals, std::arr
 
 void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const Lighting& light,
                        int screen_x, int screen_y, int cell_x, int cell_y, int alpha_all , const Hole* hole, Rows rows) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     // A floor whose DT1 material has 0x100 is drawn at full light
     // (FUN_004de410: its table all 0xff; lava).
     const bool plain = light.rgba && !hole && alpha_all >= 255;   // opaque: the 32-bit tables apply
@@ -224,6 +229,7 @@ void blit_dt1_tile_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::T
 
 void blit_dt1_wall_lit(std::vector<std::uint8_t>& framebuffer, const d2d::dt1::Tile& tile, const Lighting& light,
                        int screen_x, int screen_y, int cell_x, int cell_y, bool in_front, int alpha_all, const Hole* hole) {
+    if (tile.pixels.empty()) return;   // its art is released (GameData::manage_art)
     // 0x72a9e8 (0x72abc8 for a wall in front) by the tile's direction, filled
     // at start-up (read live): subtiles from the cell's top corner, one per
     // 32-pixel column edge.

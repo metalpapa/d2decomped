@@ -195,6 +195,7 @@ struct Level {
     int teleport = 1;                                  // Levels.txt Teleport: 0 no, 1 yes, 2 only in a clear line (FUN_0061db70 +4)
     d2d::ds1::Map ds1;
     std::vector<d2d::dt1::Archive> dt1s;
+    std::vector<std::string> dt1_paths;                 // each archive's MPQ path (GameData::manage_art reloads released pixels)
     // Keyed by (style, seq, type) — one map covers floors, walls, trees,
     // shadows, roofs; the DT1's `type` field disambiguates orientations
     // that share (style, seq). First matching tile wins across DT1s.
@@ -677,6 +678,13 @@ struct GameData {
     [[nodiscard]] const Level* town_of(int id) const { return level(d2d::rules::level_ids::kActTowns[std::size_t(d2d::rules::level_ids::act_of(id))]); }
     void want_level(int id) const;
     void poll_levels() const;
+    // Memory: levels are never freed, and with a gigabyte of RAM they add
+    // up (the system kills the game). The levels in `active` (and their
+    // neighbours) get their tile pixels back if they were released; when
+    // memory runs low, every other level's tile pixels are released (the
+    // level keeps its monsters, doors and floor; only art is decoded again
+    // when it's visited). Call about once a frame; throttles itself.
+    void manage_art(std::span<const Level* const> active) const;
     // SuperUniques.txt (without its Expansion row): name, MonStats row of
     // its Class, minions.
     struct SuperUnique { std::string name; int type = -1, min_grp = 0, max_grp = 0; std::vector<int> mods; std::array<std::string, 3> treasure_classes;

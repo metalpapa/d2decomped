@@ -102,7 +102,27 @@ public:
     [[nodiscard]] std::span<const Tile> tiles() const noexcept { return tiles_; }
     [[nodiscard]] std::size_t size() const noexcept { return tiles_.size(); }
 
+    // Frees every tile's pixel buffer (tile structs, blocks and pointers to
+    // them stay valid) so a level out of sight gives its memory back; see
+    // restore_pixels. A tile with no pixels draws nothing.
+    std::size_t release_pixels() noexcept {
+        std::size_t freed = 0;
+        for (auto& tile : tiles_) { freed += tile.pixels.capacity(); std::vector<std::uint8_t>().swap(tile.pixels); }
+        resident_ = false;
+        return freed;
+    }
+    [[nodiscard]] bool resident() const noexcept { return resident_; }
+    // Decodes the same file again into the tiles' (empty) pixel buffers.
+    bool restore_pixels(std::span<const std::byte> bytes) {
+        Archive fresh(bytes, Pixels::decode);
+        if (fresh.tiles_.size() != tiles_.size()) return false;
+        for (std::size_t i = 0; i < tiles_.size(); ++i) tiles_[i].pixels = std::move(fresh.tiles_[i].pixels);
+        resident_ = true;
+        return true;
+    }
+
 private:
+    bool resident_ = true;
     static std::int16_t rd_i16(const std::byte* source) {
         std::int16_t value; std::memcpy(&value, source, 2); return value;
     }
