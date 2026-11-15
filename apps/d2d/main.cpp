@@ -1822,7 +1822,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
             }
             const auto& font = scene->font_chat.line_height() > 0 ? scene->font_chat : scene->font;
             const auto& pal = scene->act_pal.entries().empty() ? scene->pal : scene->act_pal;
-            font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, 6, 6 + font.line_height(),
+            font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, pal, 6, 6 + font.line_height(),   // widescreen: the buffer is wider than kScreenWidth
                              std::to_string(fps_shown) + " fps  " + std::to_string(ms_shown) + " ms", 199, 179, 119);
         }
         // Skip GPU work when the window is minimized — Metal's swapchain
