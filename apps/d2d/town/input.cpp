@@ -729,6 +729,7 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             mover = item ? item : stash_at(mouse.x, mouse.y);
         query.move = mover != nullptr;
         query.store_mode = store.mode;
+        int manual_slot = -1;   // weapons, shields, rings, belts: picked up and put on by hand (EquipFromBag only does armour)
         if (item && scene && world.game_data) {
             query.sellable = d2d::rules::sellable(scene->rules, *item);
             query.potion = potion_code(item->code) || scene->rules.potions.contains(item->code);
@@ -736,6 +737,20 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const int level_needed = d2d::game::required_level(*world.game_data, *item, save_cls);
             const auto worn_by = d2d::game::wearer(*world.game_data, save_cls, character.items, character.stats);
             query.equippable = d2d::rules::bag_equip_slot(scene->rules, character.items, held, item->id, worn_by, level_needed) >= 0;
+            if (!query.equippable && !query.potion && !held) {
+                const auto* info = d2d::rules::info_of(scene->rules, *item);
+                const auto type = info ? scene->rules.types.find(info->type) : scene->rules.types.end();
+                if (type != scene->rules.types.end()) {
+                    int choice = -1;   // the first free body slot of its kind, else the first (a swap)
+                    for (const int candidate : type->second.body) {
+                        if (candidate == 0 || !d2d::rules::can_wear(scene->rules, *item, candidate, worn_by, level_needed)) continue;
+                        if (choice < 0) choice = candidate;
+                        if (!std::ranges::any_of(character.items, [&](const auto& carried) { return carried.location == d2d::d2s::item_location::kEquipped && carried.slot == candidate; })) { choice = candidate; break; }
+                    }
+                    manual_slot = choice;
+                    query.equippable = choice >= 0;
+                }
+            }
         }
         query.equippable = pad_hold_can_equip(net_game != nullptr, query.equippable);
         PadHoldKind kind = pad_hold_button(query, pad_south_down, pad_rt_down);
@@ -777,7 +792,7 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             const auto use = item_use(*item);
             if (!use.label.empty()) pad_hold_text = (use.kind == ItemUseKind::None ? "" : label_of(pad::Action::Interact) + " . ") + std::string(use.label) + "  ";
         }
-        if (pad_playing && (kind == PadHoldKind::Stow || kind == PadHoldKind::Move)) {
+        if (pad_playing && (kind == PadHoldKind::Stow || kind == PadHoldKind::Move) && (!button_down || pad_hold.armed)) {
             if (tracking) pad_hold_fraction = pad_hold.fraction();
             const bool out_of_stash = kind == PadHoldKind::Move && mover && mover != item;
             pad_hold_text = std::string("Hold ") + std::string(pad::label(pad_family, pad::Button::South)) + (out_of_stash ? " to take out" : " to store");
@@ -821,7 +836,10 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
             }
         } else if (step == hold_confirm::Step::Act && item) {
             if (kind == PadHoldKind::Sell) send(cmd::Sell{ item->id });
-            else if (kind == PadHoldKind::Equip) send(cmd::EquipFromBag{ item->id });
+            else if (kind == PadHoldKind::Equip) {
+                if (manual_slot >= 0) { send(cmd::ToCursor{ item->id }); send(cmd::ToBody{ manual_slot }); }   // a swap leaves the old piece in the hand
+                else send(cmd::EquipFromBag{ item->id });
+            }
             else if ((kind == PadHoldKind::Fill || kind == PadHoldKind::FillOne) && scene) {
                 auto trial = character.items;
                 const int boxes = scene->belts[std::size_t(belt_index(*scene, character.items))].boxes;
