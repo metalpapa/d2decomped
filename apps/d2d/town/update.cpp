@@ -604,9 +604,14 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                                                 { inv_open, stash_open, cube_open, belt_up.shown, character.expansion }, mouse.x, mouse.y);
             const auto* to_cursor = click.cmd ? std::get_if<cmd::ToCursor>(&*click.cmd) : nullptr;
             const auto used = to_cursor ? std::ranges::find(character.items, to_cursor->item, &d2d::d2s::Item::id) : character.items.end();
+            bool on_skill_icon = false;   // a right-click on a skill in the tree assigns it, so that one stays
+            if (tree_open)
+                for (const auto& node : scene->rules.class_skills[std::size_t(std::max(character.character_class, 0))])
+                    if (node.page == tree_tab)
+                        if (const auto [icon_x, icon_y] = skill_icon_at(node); icon_x > -1000 && mouse.x >= icon_x && mouse.x < icon_x + 0x30 && mouse.y >= icon_y - 0x30 && mouse.y < icon_y) on_skill_icon = true;
             if (identify_with >= 0) identify_with = -1;                  // a right-click drops the pick
-            else if (pad_playing && !click.cmd && (inv_open || char_open || stash_open || cube_open || quest_log.open || hireling.open || party.open))
-                inv_open = char_open = stash_open = cube_open = quest_log.open = hireling.open = party.open = false;   // TrimUI: B on nothing closes the panels, as Esc
+            else if (pad_playing && !click.cmd && !on_skill_icon && (inv_open || char_open || stash_open || cube_open || tree_open || quest_log.open || hireling.open || party.open))
+                inv_open = char_open = stash_open = cube_open = tree_open = quest_log.open = hireling.open = party.open = false;   // TrimUI: B on nothing closes the panels, as Esc
             else if (used != character.items.end() &&
                      (((pad_playing && pad_config.skill_buttons) || touch_enabled) ? item_use(*used).kind == ItemUseKind::Identify : (used->code == "isc" || used->code == "ibk"))) {
                 identify_with = used->id;
