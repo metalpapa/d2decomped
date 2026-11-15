@@ -1039,6 +1039,20 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
             }
             const pad::Sample first = coop_game ? gamepads.sample(SDL_JoystickID(std::max(seats.pad(ui_seat), 0)))
                                     : lobby_on  ? gamepads.sample(SDL_JoystickID(external_pads.front())) : gamepads.sample();
+            {   // TrimUI: L1 + Start held for a second leaves at once, without saving (the console's usual exit chord)
+                static std::uint32_t combo_since = 0;
+                bool combo = false;
+                for (const auto& pad : gamepads.pads()) {
+                    const auto held_pad = gamepads.sample(pad.id);
+                    if (held_pad.held[std::size_t(pad::Button::LeftShoulder)] && held_pad.held[std::size_t(pad::Button::Start)]) combo = true;
+                }
+                if (!combo) combo_since = 0;
+                else if (combo_since == 0) combo_since = pad_now | 1u;
+                else if (pad_now - combo_since >= 1000u) {
+                    d2d::log::info("L1 + Start held: leaving without saving");
+                    std::_Exit(0);
+                }
+            }
             if (ui_seat != last_ui_seat) {                       // another pad: what it holds now isn't pressed now
                 pad_mapper = pad::Mapper{ g_pad_config };
                 (void)pad_mapper.step(first, pad_context, 0);
