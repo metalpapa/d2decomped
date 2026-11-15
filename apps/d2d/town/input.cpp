@@ -193,6 +193,17 @@ auto Town::pad_act(PadPlayer& player_pad, const UnitState& unit, bool dead, bool
         }
         const bool left = !move.alt;
         const int skill = left ? left_skill : right_skill, item = left ? left_item : right_item;
+        // Raise Skeleton, Corpse Explosion and the like cast at a corpse within 2 cells of the target point
+        // (Fight::corpse_near): aiming by the stick's facing alone needs the corpse exactly in line, so take the nearest one.
+        if (const auto* corpse_skill = scene ? scene->skills.get(skill) : nullptr;
+            corpse_skill && (corpse_skill->target_corpse || corpse_skill->srvdofunc == d2d::rules::ServerDoFunction::kCorpseExplosion) && (move.alt || move.attack)) {
+            const Monster* nearest = nullptr;
+            float best = 12.f;
+            for (const auto& corpse : view.monsters)
+                if (corpse.usable_corpse())
+                    if (const float apart = std::hypot(corpse.unit.x - hero_x, corpse.unit.y - hero_y); apart < best) { best = apart; nearest = &corpse; }
+            if (nearest) { out(cmd::UseSkill{ skill, nearest->unit.x, nearest->unit.y, nearest->id, left, item }); return; }
+        }
         const PadPick pick = pad_pick(player_pad, unit, left && move.attack, pad_aim(skill, move.aim || move.active));
         if (pick.kind == PadPick::kMonster) {
             player_pad.target = pick.id;
