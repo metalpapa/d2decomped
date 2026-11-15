@@ -835,6 +835,7 @@ auto Town::drive_pad_hold(Mouse& mouse, float seconds) -> void {
                 send(cmd::ToGrid{ dest, column, row });
             }
         } else if (step == hold_confirm::Step::Act && item) {
+            d2d::log::info("hold A on item {}: kind {} stash_open {} store {} identify {} imbue {} town {}", item->code, int(kind), stash_open, store.npc, identify_with, use_item.open(), level && d2d::rules::level_ids::is_town(level->id));
             if (kind == PadHoldKind::Sell) send(cmd::Sell{ item->id });
             else if (kind == PadHoldKind::Equip) {
                 if (manual_slot >= 0) { send(cmd::ToCursor{ item->id }); send(cmd::ToBody{ manual_slot }); }   // a swap leaves the old piece in the hand
