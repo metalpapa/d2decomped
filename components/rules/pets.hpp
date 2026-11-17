@@ -22,7 +22,7 @@ namespace d2d::rules {
 // `crowd`: how many of them, the merc too, stand within 2 of this one
 // (FUN_005e3900; Fight::pet_crowd).
 // `velocity` / `run`: MonStats. The foe (FUN_005dd7f0): its spot, the
-// search's distance and whether it's in melee (FUN_00622c40), `ignored`
+// search's distance and whether it's in attack range (`foe_melee`), `ignored`
 // its +0xc4 bit 30; `clear` a line to it (FUN_005dc640).
 struct PetView {
     int x = 0, y = 0, size = 1;

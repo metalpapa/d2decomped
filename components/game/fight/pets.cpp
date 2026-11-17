@@ -378,6 +378,8 @@ auto Fight::pet_walking(Pet& pet, std::uint32_t now_ms, float /* elapsed: a turn
                 const int sum = 100 + run_pct + monster.move_pct + pet.speed_pct + pet_buff_stat(pet, d2d::d2s::kVelocityPercent);   // Burst of Speed's on a Shadow
                 const UnitState* walk_at = pet.to_owner ? &actor->player : pet.chase ? &monsters[std::size_t(pet.target)].unit : nullptr;
                 if (walk_on(*level, unit, path_velocity(velocity, std::max(sum, 25)), crowd, walk_at)) return true;
+                unit.walking = false;
+                unit.path.clear();
             }
             pet.chase = pet.to_owner = false;
             set_mode(*game_data, monster, "NU", now_ms);
@@ -470,10 +472,17 @@ auto Fight::necropet_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const C
         if (found >= 0) {
             const auto& foe = monsters[std::size_t(found)];
             const auto& foe_type = game_data->monsters.types[std::size_t(foe.type)];
+            int attack_range = type_info.melee_rng + 1;
+            if (pet.ranged >= 0)
+                if (const auto* ranged_skill = game_data->skills.get(pet.ranged))
+                    if (const auto* missile = pet_missile(*ranged_skill, pet.variant)) {
+                        const float flight_range = missile_speed(*missile, pet.ranged_level) * float(std::max(missile->range, 1)) * 0.2f;
+                        attack_range = std::max(attack_range, std::min(int(std::floor(flight_range)), 0x18));
+                    }
             view.foe = true;
             view.foe_x = sub(foe.unit.x); view.foe_y = sub(foe.unit.y);
             view.foe_distance = pick.target >= 0 ? pick.best : pick.second_best;
-            view.foe_melee = d2d::rules::unit_distance(view.foe_x - pet_x, view.foe_y - pet_y, size, foe_type.size) <= type_info.melee_rng + 1;
+            view.foe_melee = d2d::rules::unit_distance(view.foe_x - pet_x, view.foe_y - pet_y, size, foe_type.size) <= attack_range;
             view.clear = d2d::rules::pet_line_clear(pet_x, pet_y, size, view.foe_x, view.foe_y,
                                                     [&](int at_x, int at_y) { return level->blocked(centre(at_x), centre(at_y), 0x805); });
         }

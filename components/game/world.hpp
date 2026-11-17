@@ -421,6 +421,15 @@ struct World {
     Loot  loot{ game_data, level, rng, cues };          // on the ground (loot.hpp)
     Fight fight{ game_data, level, rng, loot, cues };   // the fight (fight.hpp)
     bool  autoloot_gold = true;            // d2d: gold walked over goes into the purse (deviations.md #5, --toggle autoloot)
+    struct TickProfile {
+        std::uint32_t last_report_ms = 0;
+        std::uint64_t samples = 0;
+        std::uint64_t total_us = 0, total_max_us = 0;
+        std::uint64_t level_us = 0, level_max_us = 0;
+        std::uint64_t fight_us = 0, fight_max_us = 0;
+        std::uint64_t rooms_us = 0, rooms_max_us = 0;
+        std::size_t monsters = 0, rooms = 0;
+    } tick_profile;
     std::vector<int> not_there;            // levels walked toward that aren't built (logged once)
     struct WirtGold { std::uint32_t next_ms; int left, item_level; };
     std::map<std::pair<const Level*, int>, WirtGold> wirt_gold;

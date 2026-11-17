@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -286,6 +287,9 @@ auto World::hand_out_announced() -> void {
     }
 
 auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std::uint32_t last_ms) -> void {
+    using ProfileClock = std::chrono::steady_clock;
+    const auto tick_started = ProfileClock::now();
+    const auto level_started = ProfileClock::now();
         const float elapsed = float(now_ms - last_ms) / 1000.f;
         now = now_ms;
         // The look follows what's worn (compcode::look, the save header's bytes).
@@ -303,6 +307,7 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
             each_player([&](Player& player) { if (player.on_level) active.push_back(player.on_level); });
             game_data->manage_art(active);
         }
+        const auto level_us = std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(ProfileClock::now() - level_started).count());
         if (!in_town(level)) each_player([](Player& player) { player.greeted.clear(); });   // FUN_004b3e10: out of town, all greet again
         fight.spawning.game_quests = game_bits;          // the town markers' inits read them as rooms come up
         // a3q7: the Dark Wanderer gone (ai/act3.cpp) marks every player in act 3 (FUN_005bd260: word 0x20 bit 0, if missing).
@@ -683,7 +688,9 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
         // The player's mode as the merc's think reads it: 2 walk, 3 run, 6 walk in town.
         for (auto& player : players)
             player->owner_mode = !player->player.walking ? 1 : player->running && player->character.stats.values[d2d::d2s::kStamina] > 0 ? 3 : in_moor ? 2 : 6;
+        const auto fight_started = ProfileClock::now();
         fight.world(in_moor, now_ms, elapsed, crowd);
+        const auto fight_us = std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(ProfileClock::now() - fight_started).count());
         den_count(now_ms);                                       // the killers' credit, then their party's (den_count)
         each_player([&](Player& player) {
             if (std::exchange(player.reassigned, false)) player.events.push_back(ev::Reassigned{});
@@ -720,7 +727,9 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
             act5_update(now_ms);
         });
         each_player([&](Player&) { cross_level(); });
+        const auto rooms_started = ProfileClock::now();
         for (const auto& player : players) if (here(*player)) fight.rooms_up(*level, player->player.x, player->player.y, false);
+        const auto rooms_us = std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(ProfileClock::now() - rooms_started).count());
         act3_bind_new_bosses();
         init_new_objects();
         reopen_doors();
@@ -734,6 +743,26 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
         if (in_town(level))                                      // the party in a town: its ghosts are up again
             each_player([&](Player& player) { if (player.ghost) revive(player, now_ms); });
         loot.standing = nullptr;                                 // the crowd dies with this tick
+        const auto total_us = std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(ProfileClock::now() - tick_started).count());
+        auto& profile = tick_profile;
+        if (profile.last_report_ms == 0) profile.last_report_ms = now_ms;
+        ++profile.samples;
+        profile.total_us += total_us; profile.total_max_us = std::max(profile.total_max_us, total_us);
+        profile.level_us += level_us; profile.level_max_us = std::max(profile.level_max_us, level_us);
+        profile.fight_us += fight_us; profile.fight_max_us = std::max(profile.fight_max_us, fight_us);
+        profile.rooms_us += rooms_us; profile.rooms_max_us = std::max(profile.rooms_max_us, rooms_us);
+        profile.monsters = fight.monsters.size(); profile.rooms = level->rooms.size();
+        if (now_ms - profile.last_report_ms >= 5000 && profile.samples) {
+            const auto avg_ms = [&](std::uint64_t total) { return double(total) / double(profile.samples) / 1000.0; };
+            d2d::log::info("simulation (ms/world turn): level={} total avg={:.2f} max={:.2f} level-prep avg={:.2f} max={:.2f} fight+AI avg={:.2f} max={:.2f} room-up avg={:.2f} max={:.2f} monsters={} rooms={}",
+                           level->id, avg_ms(profile.total_us), double(profile.total_max_us) / 1000.0,
+                           avg_ms(profile.level_us), double(profile.level_max_us) / 1000.0,
+                           avg_ms(profile.fight_us), double(profile.fight_max_us) / 1000.0,
+                           avg_ms(profile.rooms_us), double(profile.rooms_max_us) / 1000.0,
+                           profile.monsters, profile.rooms);
+            profile = {};
+            profile.last_report_ms = now_ms;
+        }
     }
 
 // State 153 on a unit: each client's setfunc 2 (FUN_004d87e0) dips its
