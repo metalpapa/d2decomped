@@ -26,7 +26,9 @@ namespace d2d::client {
 namespace {
 
 constexpr int kWidth = int(kScreenWidth), kHeight = int(kScreenHeight);
-constexpr int kMenuTextScale = 2, kMenuTextMargin = 24;
+constexpr int kMenuTextScaleNum = 3, kMenuTextScaleDen = 2, kMenuTextMargin = 24;
+
+constexpr int scaled_text_size(int size) { return (size * kMenuTextScaleNum + kMenuTextScaleDen - 1) / kMenuTextScaleDen; }
 
 // A menu row (0x550 bytes in game.exe): type -1 title, 0 button, 1 choice,
 // 2 slider; xp rows are LoD's only; count / def the choices or slider
@@ -384,13 +386,13 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
         const std::string_view label = fallback_text(row.name, scene.lang);
         const bool labelled = !label.empty();
         const auto& text_font = scene.font30.line_height() > 0 ? scene.font30 : scene.font;
-        const int text_top = y + (def.step - text_font.line_height() * kMenuTextScale) / 2;
+        const int text_top = y + (def.step - scaled_text_size(text_font.line_height())) / 2;
         const auto draw_fallback = [&](int x, bool centred) {
             const std::string text(label);
-            const int width = text_font.measure(text) * kMenuTextScale;
+            const int width = scaled_text_size(text_font.measure(text));
             const int left = centred ? x - width / 2 : x;
-            text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
-                                         left, text_top, text, 199, 179, 119, kMenuTextScale);
+            text_font.draw_tinted_resampled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                            left, text_top, text, 199, 179, 119, kMenuTextScaleNum, kMenuTextScaleDen);
         };
         if (row.type <= 0) {
             if (labelled) draw_fallback(kWidth / 2, true);
@@ -398,9 +400,9 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
             if (labelled) draw_fallback(kMenuTextMargin, false);
             const auto choice_name = row.choices[std::size_t(value[std::size_t(menu)][std::size_t(row_index)])];
             const auto choice_text = fallback_text(choice_name, scene.lang);
-            if (!choice_text.empty()) text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
-                                                                   kWidth - kMenuTextMargin - text_font.measure(std::string(choice_text)) * kMenuTextScale,
-                                                                   text_top, choice_text, 199, 179, 119, kMenuTextScale);
+            if (!choice_text.empty()) text_font.draw_tinted_resampled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                                                      kWidth - kMenuTextMargin - scaled_text_size(text_font.measure(choice_text)),
+                                                                      text_top, choice_text, 199, 179, 119, kMenuTextScaleNum, kMenuTextScaleDen);
         } else {
             if (labelled) draw_fallback(kMenuTextMargin, false);
             // FUN_0047e260: the strip darkened either side of the knob, the
@@ -418,8 +420,9 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
                 char speed[8];
                 const int tenths = 5 + val;   // 0.5x .. 1.5x
                 std::snprintf(speed, sizeof speed, "%d.%dx", tenths / 10, tenths % 10);
-                text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
-                                             kWidth / 2 + 0xe6 + 12, text_top, speed, 199, 179, 119, kMenuTextScale);
+                text_font.draw_tinted_resampled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                                kWidth / 2 + 0xe6 + 12, text_top, speed, 199, 179, 119,
+                                                kMenuTextScaleNum, kMenuTextScaleDen);
             }
         }
     }

@@ -89,6 +89,12 @@ static void baseline_pixels() {
         const bool expected = (x == 8 || x == 9) && y >= 4 && y <= 9;
         assert((scaled_baseline[std::size_t((y * 16 + x) * 4 + 3)] != 0) == expected);
     }
+    std::vector<std::uint8_t> resampled_baseline(16 * 16 * 4);
+    assert(font.draw_tinted_baseline_resampled(resampled_baseline, 16, 16, palette, 4, 10, "A", 255, 255, 255, 3, 2) == 7);
+    for (int y = 0; y < 16; ++y) for (int x = 0; x < 16; ++x) {
+        const bool expected = (x == 7 || x == 8) && y >= 6 && y <= 10;
+        assert((resampled_baseline[std::size_t((y * 16 + x) * 4 + 3)] != 0) == expected);
+    }
 
     std::vector<std::uint8_t> normal(16 * 16 * 4), scaled(16 * 16 * 4);
     assert(font.draw_tinted(normal, 16, 16, palette, 4, 4, "A", 255, 255, 255) == 6);
