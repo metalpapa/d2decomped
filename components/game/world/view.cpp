@@ -139,6 +139,8 @@ auto World::view() const -> View {
         view.attack_skill = actor->attack_skill;
         if (loot.ground_level == level) view.ground = loot.ground;
         for (const auto& fire : fires) if (fire.level == level) view.fires.push_back({ fire.x, fire.y, fire.npc, fire.born });
+        for (const auto& fire : fight.corpse_blast_fires)
+            if (fire.level == level && now < fire.gone) view.fires.push_back({ fire.x, fire.y, &game_data->trap_fires[0], fire.born, fire.radius, fire.gone });
         for (std::size_t k = 0; k < actor->corpses.size(); ++k)
             if (actor->corpses[k].level == level) view.corpses.push_back({ actor->corpses[k].x, actor->corpses[k].y, actor->corpses[k].dir, actor->corpses[k].gfx, int(k) });
         for (int k = 0; k < int(portal.size()); ++k)

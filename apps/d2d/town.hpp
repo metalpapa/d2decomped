@@ -148,7 +148,7 @@ inline std::vector<std::string_view> player_states(const Scene& scene, const Vie
 constexpr std::uint32_t kPortalOpenMs = 15 * 40 * 256 / 200;
 void view_units(const Scene& scene, const View& view, float camera_x, float camera_y, const std::string* merc_label, std::vector<Unit>& out,
                 std::span<const View::Shot> effects = {}, std::uint32_t now_ms = 0, const std::string* corpse_name = nullptr, int cls = 0,
-                StateClock* clk = nullptr);
+                StateClock* clk = nullptr, bool hide_low_value_labels = false);
 // Show Items' walk (FUN_004c0810) over view_units' ground items (npc -1000
 // - their View::ground index): the near list of the room holding (x, y)
 // cells in order (game::automap_rooms, FUN_00619790), each room's items
@@ -465,7 +465,7 @@ struct Town {
     // True when no panel, menu or dialog is up: the pad plays without a cursor.
     [[nodiscard]] bool pad_field() const;
     // An NPC's menu or speech, the game menu or a waypoint: B leaves, the d-pad steps the choices.
-    [[nodiscard]] bool pad_dialog() const { return npc_menu.npc >= 0 || speech.npc >= 0 || game_menu.open || waypoint.open; }
+    [[nodiscard]] bool pad_dialog() const { return npc_menu.npc >= 0 || speech.npc >= 0 || game_menu.open || waypoint.open || use_item.open(); }
     // Where the pad's cursor goes when a menu opens (or its lines change): the choice to start on.
     struct PadFocus { int key = 0, x = 0, y = 0; };
     [[nodiscard]] std::optional<PadFocus> pad_focus() const;

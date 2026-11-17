@@ -776,25 +776,13 @@ void finish_level(Level& level) {
     level.tile_walk = level.walk;
 }
 
-std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, const std::string& mpq_path, d2d::dt1::Pixels pixels) {
-    static std::mutex mutex;
-    static std::map<std::string, std::weak_ptr<d2d::dt1::Archive>> cache;
-    std::string key = mpq_path;
-    std::ranges::transform(key, key.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    {
-        std::lock_guard lock(mutex);
-        if (auto found = cache[key].lock()) return found;
-    }
-    auto bytes = mpqs.try_read(mpq_path);
-    if (!bytes) return nullptr;
-    auto made = std::make_shared<d2d::dt1::Archive>(*bytes, pixels);
-    std::lock_guard lock(mutex);
-    if (auto raced = cache[key].lock()) return raced;
-    cache[key] = made;
-    return made;
+std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, d2d::dt1::ArchiveCache& cache,
+                                               const std::string& mpq_path, d2d::dt1::Pixels pixels) {
+    return cache.get(mpq_path, pixels, [&](const std::string& path) { return mpqs.try_read(path); });
 }
 
-LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::OutdoorAssets& assets, int type, d2d::dt1::Pixels pixels) {
+LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::dt1::ArchiveCache& cache,
+                          d2d::drlg::OutdoorAssets& assets, int type, d2d::dt1::Pixels pixels) {
     LevelDt1s dt1s;
     dt1s.heads = d2d::drlg::load_room_dt1s(assets, [&](const std::string& path) { return mpqs.try_read(path); }, type);
     std::vector<std::pair<const d2d::drlg::Dt1File*, std::string>> files;
@@ -808,7 +796,7 @@ LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::Outdoo
     for (const auto& [file_key, file] : files) {
         const auto path = R"(data\global\tiles\)" + ds1_path_to_mpq(file);
         try {
-            auto archive = shared_dt1(mpqs, path, pixels);
+            auto archive = shared_dt1(mpqs, cache, path, pixels);
             if (!archive) continue;
             dt1s.archive[file_key] = archive.get();
             level.dt1s.push_back(std::move(archive));
@@ -1180,7 +1168,8 @@ bool build_outdoor(const GameData& game_data, d2d::mpq::Stack& mpqs, d2d::drlg::
     const auto outdoor_level = d2d::rules::level_ids::act_of(level.id) == 2 ? d2d::drlg::act3_outdoor_level(assets.levels, game_data.act3_layout, level.id)
                                                                             : d2d::drlg::outdoor_level(assets.levels, game_data.layout_of(level.id), level.id);
     if (outdoor_level.rect.width == 0) { d2d::log::warn("{}: the layout didn't place it", level.name); return false; }
-    const auto dt1s = load_level_dt1s(level, mpqs, assets, level.type, game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
+    const auto dt1s = load_level_dt1s(level, mpqs, *game_data.dt1_cache, assets, level.type,
+                                      game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
     assets.data.dt1s = &dt1s.heads;                          // stamps pick their shadows as they go (game.exe's rolls)
     auto outdoor = d2d::drlg::generate_outdoor(assets.data, outdoor_level, d2d::drlg::level_seed(game_data.map_seed, level.id));
     assets.data.dt1s = nullptr;
@@ -1243,7 +1232,8 @@ bool build_maze(const GameData& game_data, d2d::mpq::Stack& mpqs, d2d::drlg::Out
     level.ds1 = d2d::ds1::Map(width, height, 4, 2);
     level.world_x = rect[0];
     level.world_y = rect[1];
-    const auto dt1s = load_level_dt1s(level, mpqs, assets, level.type, game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
+    const auto dt1s = load_level_dt1s(level, mpqs, *game_data.dt1_cache, assets, level.type,
+                                      game_data.tile_pixels ? d2d::dt1::Pixels::decode : d2d::dt1::Pixels::skip);
     const auto placed = set_level_tiles(level, assets, dt1s, made, {}, notes);
     level.rooms = std::move(made);
     for (const auto& note : notes) d2d::log::info("  not implemented: {}", note);

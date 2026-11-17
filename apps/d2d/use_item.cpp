@@ -3,6 +3,7 @@
 #include "use_item.hpp"
 
 #include "common.hpp"
+#include "panels.hpp"
 #include "scene.hpp"
 #include "ui.hpp"
 
@@ -19,6 +20,12 @@
 
 namespace d2d::client::use_item {
 
+namespace {
+
+constexpr int kTextScale = 2;
+
+}  // namespace
+
 // FUN_004c01e0 -> FUN_004bfdd0, then the placed item (FUN_004c01e0 state 2)
 // and in state 3 the wait box.
 void draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const Panel& panel, const d2d::d2s::Item* held,
@@ -31,6 +38,7 @@ void draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const Pane
         blit_sprite(framebuffer, image, pal, left, bottom - int(image.height));
     };
     const auto& font = scene.font;                               // FUN_00502ef0(1): font16
+    draw_char_panel_background(framebuffer, scene);
     cel(scene.use_item_panel, 0, kPanelX, kPanelBottom);         // MENU\upgrade (0x7c5494)
     for (std::size_t index = 0; index < kButtons.size(); ++index) {
         const auto& button = kButtons[index];
@@ -43,25 +51,27 @@ void draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const Pane
     if (const int index = button_at(mouse_x, mouse_y); index >= 0 && mouse_x < 0x140 && mouse_y < int(kScreenHeight) - 0x30) {
         const auto& button = kButtons[std::size_t(index)];
         const auto label = string_id(scene, index == 0 ? service_label(panel.hc_idx) : button.label);
-        const int width = font.measure(label), height = font.line_height();
+        const int width = font.measure(label) * kTextScale, height = font.line_height() * kTextScale;
         const int left = button.x - width / 2 + 10, top = button.bottom - height - 0x2a;
         for (int pixel_y = std::max(0, top); pixel_y < std::min(int(kScreenHeight), top + height + 6); ++pixel_y)
             for (int pixel_x = std::max(0, left); pixel_x < std::min(int(kScreenWidth), left + width + 0xc); ++pixel_x) {
                 auto* pixel = &framebuffer[(std::size_t(pixel_y) * kScreenWidth + std::size_t(pixel_x)) * 4];
                 for (int channel = 0; channel < 3; ++channel) pixel[channel] = std::uint8_t(pixel[channel] / 4);
             }
-        font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, button.x - width / 2 + 0x10, glyph_top(font, button.bottom - 0x26), label, 255, 255, 255);
+        font.draw_tinted_baseline_scaled(framebuffer, kScreenWidth, kScreenHeight, pal, button.x - width / 2 + 0x10,
+                                         button.bottom - 0x26, label, 255, 255, 255, kTextScale);
     }
     // The instructions, gold, wrapped (FUN_00502970) and centred.
-    const auto lines = d2d::font::wrap_edit_box(string_id(scene, instructions(panel.hc_idx)), kTextWidth, [&](unsigned char code) {
+    const auto lines = d2d::font::wrap_edit_box(string_id(scene, instructions(panel.hc_idx)), kTextWidth / kTextScale, [&](unsigned char code) {
         const auto* glyph = font.find(code);
         return glyph ? int(glyph->width) : 0;
     });
     int bottom = kTextBottom;
     for (const auto& line : lines) {
         const auto& gold = d2d::game::kTxtGold;
-        font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, kTextX - font.measure(line) / 2, glyph_top(font, bottom), line, gold[0], gold[1], gold[2]);
-        bottom += kTextStep;
+        font.draw_tinted_baseline_scaled(framebuffer, kScreenWidth, kScreenHeight, pal, kTextX - font.measure(line) * kTextScale / 2,
+                                         bottom, line, gold[0], gold[1], gold[2], kTextScale);
+        bottom += kTextStep * kTextScale;
     }
     // The placed item (FUN_0046ee80): centred on 0xa7, from y 0x6a, down
     // (0x72 - its height) / 2 more when under 0x70 tall.

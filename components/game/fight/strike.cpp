@@ -740,9 +740,11 @@ auto Fight::strike_bolts(const d2d::rules::Skill& skill, std::size_t monster_ind
 auto Fight::corpse_blast(const d2d::rules::Skill& skill, int lvl, std::size_t corpse_index, std::uint32_t now_ms) -> void {
         auto& corpse = monsters[corpse_index];
         corpse.corpse_used = true;
+        constexpr std::uint32_t kVisualMs = 720;
         const int low = calc(skill, skill.calc[0], lvl), high = std::max(calc(skill, skill.calc[1], lvl), low);
         const int dmg = int(std::int64_t(corpse.stats.hit_points) * rng.range(low, high) / 100);
         const int radius = std::max(calc(skill, skill.aurarange, lvl) / 2, 1);
+        corpse_blast_fires.push_back({ mon_level, corpse.unit.x, corpse.unit.y, float(radius) / 5.f, now_ms, now_ms + kVisualMs });
         for (std::size_t j = 0; j < monsters.size(); ++j)
             if (monsters[j].targetable() && std::hypot(monsters[j].unit.x - corpse.unit.x, monsters[j].unit.y - corpse.unit.y) * 5 <= float(radius)) {
                 const auto target = target_of(j);

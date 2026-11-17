@@ -268,6 +268,7 @@ struct Monster {
     int life_frac = 0;                        // 256ths of a point already taken off hit_points (life = hit_points x 256 - life_frac)
     int leader = -1;                          // index of its group's leader
     int difficulty = 0;
+    int challenge_health_pct = 100, challenge_combat_pct = 100;
     float home_x = 0, home_y = 0;             // where it spawned: wandering stays near
     std::string_view mode = "NU";             // animation mode token
     std::string_view last_mode = "NU";        // as of the last sound check

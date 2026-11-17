@@ -480,11 +480,18 @@ struct Fight {
     int game_difficulty = 0;                         // new_game's
     bool game_expansion = true;                      // new_game's: the acting character's (game +0x70); add_monster marks a classic game's
     bool remote_monsters = false;                    // a game joined on a game.exe host: its monsters (S->C 0xac), none made here
+    bool challenge_monsters = false;                 // the local optional challenge: stronger stats, official difficulty unchanged
+    bool more_monsters = false;                      // the local optional challenge: denser newly populated rooms
+    void set_challenge_monsters(bool enabled);
+    void set_more_monsters(bool enabled);
+    void challenge_monster(Monster& monster, bool enabled);
 
     std::unordered_map<const Level*, std::vector<Monster>> kept;   // the other levels', while the player is away
     std::unordered_map<const Level*, std::vector<Missile>> kept_missiles;   // a level's in flight while another has its turn (World::swap_to)
     Spawning spawning;                                   // the game's rooms in play and what they spawned (new_game)
     std::vector<Missile> missiles;         // in flight in the Blood Moor
+    struct GroundFire { const Level* level; float x, y, radius; std::uint32_t born, gone; };
+    std::vector<GroundFire> corpse_blast_fires;
     int missile_sounds = 0;                // the last Missile::sound handed out
     std::uint32_t neutral_ms = 0, neutral_gap = 0;   // any monster's last Neutral and the ticks till the next may (0x7c88b8 / 0x7c88c0)
     d2d::rules::Rng sound_rng{ 0x5d1u };   // the sounds' own rolls (game.exe's are the client's seed, FUN_004e40a0), apart from the game's

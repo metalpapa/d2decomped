@@ -476,7 +476,38 @@ static Screen parse_screen(std::string_view text) {
 // exact rate instead, slept precisely. The World still ticks at 25 Hz; the
 // frames between draw the units sliding (unit_slide.hpp).
 static int g_fps_cap = 0;   // frames a second, 0 = the display's refresh (--fps-cap / d2d.cfg fps_cap)
-static bool g_show_fps = false;   // d2d.cfg show_fps = 1: frames a second and render ms, top left
+static bool g_show_fps = false;   // d2d.cfg show_fps = 1: frames a second and battery percentage, top left
+#if defined(__linux__)
+static auto battery_percent() -> std::optional<int> {
+    static bool checked = false;
+    static std::uint32_t checked_at = 0;
+    static std::optional<int> cached;
+    const auto now = std::uint32_t(SDL_GetTicks());
+    if (checked && now - checked_at < 15'000u) return cached;
+    checked = true;
+    checked_at = now;
+    std::error_code error;
+    auto entry = std::filesystem::directory_iterator("/sys/class/power_supply", error);
+    const std::filesystem::directory_iterator end;
+    while (!error && entry != end) {
+        std::ifstream type_file(entry->path() / "type");
+        std::string type;
+        if (!(type_file >> type) || type == "Battery") {
+            std::ifstream capacity_file(entry->path() / "capacity");
+            int percent = -1;
+            if (capacity_file >> percent && percent >= 0 && percent <= 100) {
+                cached = percent;
+                return cached;
+            }
+        }
+        entry.increment(error);
+    }
+    cached.reset();
+    return cached;
+}
+#else
+static auto battery_percent() -> std::optional<int> { return std::nullopt; }
+#endif
 struct FrameBudget { std::uint64_t nanos; bool exact; };
 inline FrameBudget frame_budget(SDL_Window* window) {
     if (g_fps_cap > 0) return { 1'000'000'000ull / std::uint64_t(g_fps_cap), true };
@@ -785,6 +816,14 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         town.hireling_hint = cfg["popup_hireling"] != "1";   // FUN_004939b0 reads the registry's PopupHireling each game
         town.automap_items = cfg["automap_items"] == "1";
         town.game_menu.value[3][GameMenu::kSpeedRow] = cfg["game_speed"].empty() ? 5 : std::clamp(std::atoi(cfg["game_speed"].c_str()), 0, 10);
+        auto& challenge = town.game_menu.value[GameMenu::kChallengeMenu];
+        challenge[GameMenu::kHardMonstersRow] = cfg["challenge_monsters"] == "1";
+        challenge[GameMenu::kMoreMonstersRow] = cfg["challenge_more_monsters"] == "1";
+        challenge[GameMenu::kClassLootRow] = cfg["challenge_class_loot"] == "1";
+        challenge[GameMenu::kLootFilterRow] = cfg["loot_filter"] == "1";
+        town.world.fight.set_challenge_monsters(challenge[GameMenu::kHardMonstersRow] != 0);
+        town.world.fight.set_more_monsters(challenge[GameMenu::kMoreMonstersRow] != 0);
+        town.world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? 50 : 0;
     }
     if (g_click_keys) town.click_keys = g_click_bindings;
     if (!g_no_save) town.key_dir = save_dir;                 // <name>.key and default.key beside the saves, as game.exe keeps them
@@ -1077,9 +1116,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                 pad_capture_held[button] = button == std::size_t(pad::Button::LeftTrigger) ? first.left_trigger >= 0.5f
                                          : button == std::size_t(pad::Button::RightTrigger) ? first.right_trigger >= 0.5f : first.held[button];
             const bool controls_pad = screen == Screen::InGame && town.controls.open;
-            const pad::SkillUi skill_ui = controls_pad || !town.pad_config.skill_buttons ? pad::SkillUi::None
-                                         : town.skillbar.picking == 3 ? pad::SkillUi::Wheel
-                                         : town.skill_strip >= 0 ? pad::SkillUi::Strip : pad::SkillUi::None;
+            const pad::SkillUi skill_ui = pad::skill_ui_for(controls_pad, town.pad_config.skill_buttons, town.skillbar.picking, town.skill_strip);
             pad::Actions pad_actions = pad_capture ? (void(pad_mapper.step(first, pad_context, pad_dt, skill_ui)), pad::Actions{})
                                                          : pad_mapper.step(first, pad_context, pad_dt, skill_ui);
             const int pad_side = (win.view_w - int(kScreenWidth)) / 2;   // widescreen's world beyond the 800x600 UI
@@ -1835,19 +1872,20 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         close_phase();
         const std::uint32_t t_after_render = std::uint32_t(SDL_GetTicks());
         if (g_show_fps && scene) {
-            // Counted over a second so the number is readable; render ms is the average of that second.
-            static std::uint32_t fps_start = t_after_render, fps_frames = 0, fps_render_sum = 0, fps_shown = 0, ms_shown = 0;
+            // Count FPS over a second; battery_percent() refreshes its sysfs read every 15 seconds.
+            static std::uint32_t fps_start = t_after_render, fps_frames = 0, fps_shown = 0;
+            static std::string battery_shown = "--%";
             ++fps_frames;
-            fps_render_sum += t_after_render - t_after_input;
             if (t_after_render - fps_start >= 1000) {
                 fps_shown = fps_frames * 1000 / (t_after_render - fps_start);
-                ms_shown = fps_render_sum / fps_frames;
-                fps_start = t_after_render; fps_frames = 0; fps_render_sum = 0;
+                if (const auto percent = battery_percent()) battery_shown = std::to_string(*percent) + "%";
+                else battery_shown = "--%";
+                fps_start = t_after_render; fps_frames = 0;
             }
             const auto& font = scene->font_chat.line_height() > 0 ? scene->font_chat : scene->font;
             const auto& pal = scene->act_pal.entries().empty() ? scene->pal : scene->act_pal;
             font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, pal, 6, 6 + font.line_height(),   // widescreen: the buffer is wider than kScreenWidth
-                             std::to_string(fps_shown) + " fps  " + std::to_string(ms_shown) + " ms", 199, 179, 119);
+                             std::to_string(fps_shown) + " fps  " + battery_shown, 199, 179, 119);
         }
         // Skip GPU work when the window is minimized — Metal's swapchain
         // stalls if we keep pushing frames to a hidden drawable, which

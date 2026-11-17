@@ -399,6 +399,19 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                                                       { "game_speed", std::to_string(game_menu.speed_step()) } }))
                 d2d::log::warn("d2d.cfg: gamma, contrast and game speed not saved");
             game_menu.video_changed = false;
+            if (game_menu.challenge_changed) {
+                const auto& challenge = game_menu.value[GameMenu::kChallengeMenu];
+                world.fight.set_challenge_monsters(challenge[GameMenu::kHardMonstersRow] != 0);
+                world.fight.set_more_monsters(challenge[GameMenu::kMoreMonstersRow] != 0);
+                world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? 50 : 0;
+                if (!cfg_file.empty() && !d2d::userdir::save_cfg(cfg_file, {
+                        { "challenge_monsters", challenge[GameMenu::kHardMonstersRow] ? "1" : "0" },
+                        { "challenge_more_monsters", challenge[GameMenu::kMoreMonstersRow] ? "1" : "0" },
+                        { "challenge_class_loot", challenge[GameMenu::kClassLootRow] ? "1" : "0" },
+                        { "loot_filter", challenge[GameMenu::kLootFilterRow] ? "1" : "0" } }))
+                    d2d::log::warn("d2d.cfg: challenge settings not saved");
+                game_menu.challenge_changed = false;
+            }
             if (action != GameMenu::kNone) close_game_menu();
             if (action == GameMenu::kSave && !lan_client) {  // TrimUI-only row; a joiner's save() would leave the game
                 if (const auto why = save(); !why.empty()) d2d::log::warn("Save: {}", why);

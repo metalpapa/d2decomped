@@ -184,18 +184,22 @@ int stat_button_at(int mouse_x, int mouse_y) {
     return -1;
 }
 
+void draw_char_panel_background(std::vector<std::uint8_t>& framebuffer, const Scene& scene) {
+    if (scene.inv_panel.frames_per_direction() < 8) return;
+    const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
+    const auto& frame = scene.inv_panel.frame(0, 0);
+    blit_sprite(framebuffer, frame, pal, kCharPanelX, kCharPanelY);
+    blit_sprite(framebuffer, scene.inv_panel.frame(0, 1), pal, kCharPanelX + int(frame.width), kCharPanelY);
+    blit_sprite(framebuffer, scene.inv_panel.frame(0, 2), pal, kCharPanelX, kCharPanelY + int(frame.height));
+    blit_sprite(framebuffer, scene.inv_panel.frame(0, 3), pal, kCharPanelX + int(frame.width), kCharPanelY + int(frame.height));
+}
+
 void draw_char_panel(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d::d2s::Stats& stats,
                      const PanelStats& panel,
                      std::string_view name, int class_idx, int pressed_button) {
     const auto& pal = scene.act_pal.entries().empty() ? scene.pal : scene.act_pal;
     const int panel_x = kCharPanelX, panel_y = kCharPanelY;
-    if (scene.inv_panel.frames_per_direction() >= 8) {
-        const auto& frame = scene.inv_panel.frame(0, 0);
-        blit_sprite(framebuffer, frame, pal, panel_x, panel_y);
-        blit_sprite(framebuffer, scene.inv_panel.frame(0, 1), pal, panel_x + int(frame.width), panel_y);
-        blit_sprite(framebuffer, scene.inv_panel.frame(0, 2), pal, panel_x, panel_y + int(frame.height));
-        blit_sprite(framebuffer, scene.inv_panel.frame(0, 3), pal, panel_x + int(frame.width), panel_y + int(frame.height));
-    }
+    draw_char_panel_background(framebuffer, scene);
     // As FUN_004a7d00 draws it: text centred in [x0, x1] as
     // x0 + (x1 - x0 + 1 - w) / 2 (left-aligned when it doesn't fit), y the
     // baseline. Labels in font6, a "Fire\nResistance" pair at y-4 / y+4;

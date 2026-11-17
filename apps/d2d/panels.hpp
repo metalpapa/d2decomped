@@ -128,6 +128,7 @@ constexpr StatButton kStatButtons[4] = { { 117, 105, 0 }, { 117, 167, 2 }, { 117
 // The stat button under (mx, my) (screen), or -1.
 int stat_button_at(int mouse_x, int mouse_y);
 
+void draw_char_panel_background(std::vector<std::uint8_t>& framebuffer, const Scene& scene);
 void draw_char_panel(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d::d2s::Stats& stats,
                      const PanelStats& panel,
                      std::string_view name, int class_idx, int pressed_button = -1);

@@ -2,9 +2,14 @@
 #pragma once
 
 #include <cstddef>
+#include <string_view>
 #include <vector>
 
 namespace d2d::rules {
+
+inline bool low_value_item_label(std::string_view code, std::string_view type) {
+    return code == "gld" || type == "hpot" || type == "mpot" || type == "rpot";
+}
 
 // Show Items' labels (UI\showitems.cpp, FUN_004c0810): each one's rect, in
 // screen pixels, edges inclusive as game.exe compares them.

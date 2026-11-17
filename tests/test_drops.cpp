@@ -25,14 +25,20 @@ int main() try {
     Tables tables;
     tables.item_info["hax"] = { .type = "axe", .kind = 2 };
     tables.item_info["big"] = { .type = "axe", .kind = 2 };
+    tables.item_info["amabow"] = { .type = "amazonbow", .kind = 2 };
+    tables.item_info["sorstaff"] = { .type = "sorceressstaff", .kind = 2 };
     tables.item_info["rin"] = { .type = "ring", .kind = 0 };
     tables.item_info["hp1"] = { .type = "hpot", .kind = 0 };
     tables.types["ring"].always_magic = true;
     tables.types["hpot"].always_normal = true;
     tables.types["axe"] = { .equiv = { "weap", "" }, .rarity = 3 };
+    tables.types["amazonbow"] = { .equiv = { "weap", "" }, .cls = "ama" };
+    tables.types["sorceressstaff"] = { .equiv = { "weap", "" }, .cls = "sor" };
     tables.types["weap"].treasure_class = true;
     tables.item_base["hax"] = { .level = 1, .normcode = "hax" };
     tables.item_base["big"] = { .level = 5 };
+    tables.item_base["amabow"] = { .level = 1 };
+    tables.item_base["sorstaff"] = { .level = 1 };
     tables.item_base["rin"].level = 1;
     tables.item_base["hp1"].level = 1;
     tables.quality_ratio[0] = { { { 400, 1, 6400 }, { 160, 2, 5600 }, { 100, 2, 3200 }, { 34, 3, 192 }, { 12, 8, 0 }, { 2, 2, 0 } } };
@@ -42,6 +48,7 @@ int main() try {
     tables.treasure["Gold"] = { .items = { { "gld", 1 } } };
     tables.treasure["Rich"] = { .items = { { "gld,mul=1280", 1 } } };
     tables.treasure["Half"] = { .nodrop = 1, .items = { { "weap3", 1 } } };
+    tables.treasure["ClassGear"] = { .items = { { "amabow", 1 }, { "sorstaff", 1 }, { "hax", 1 } } };
     tables.treasure["Two"] = { .picks = 2, .items = { { "rin", 1 }, { "hp1", 1 } } };
     Rng rng{ 11 };
     int dropped = 0, magic = 0;
@@ -64,6 +71,35 @@ int main() try {
         for (const auto& x : out) assert(x.code == "rin" ? x.quality >= 4 : x.quality == 2);   // rings magic+, potions plain
     }
     assert(dropped > 400 && dropped < 600 && magic > 0);
+    {
+        MonStats stats{ .level = 8, .hit_points = 100, .armor_class = 20, .to_hit = 40, .a1_min = 8, .a1_max = 16,
+                        .poison_min = 4, .poison_max = 8, .poison_len = 16 };
+        stats.elements[0] = { .type = 0, .min = 4, .max = 8, .dur = 4 };
+        scale_challenge_stats(stats, 100, 150, 100, 125);
+        assert(stats.hit_points == 150 && stats.armor_class == 25 && stats.to_hit == 50 && stats.a1_min == 10 && stats.a1_max == 20);
+        assert(stats.poison_min == 5 && stats.poison_max == 10 && stats.poison_len == 20 && stats.elements[0].max == 10);
+        scale_challenge_stats(stats, 150, 100, 125, 100);
+        assert(stats.hit_points == 100 && stats.armor_class == 20 && stats.to_hit == 40 && stats.a1_min == 8 && stats.a1_max == 16);
+        assert(stats.poison_min == 4 && stats.poison_max == 8 && stats.poison_len == 16 && stats.elements[0].max == 8);
+    }
+    {
+        int normal_usable = 0, challenge_usable = 0, normal_count = 0, challenge_count = 0;
+        int default_first = 0, default_second = 0;
+        Rng normal_seed{ 731 }, challenge_seed{ 731 };
+        for (int i = 0; i < 3000; ++i) {
+            std::vector<Drop> normal, challenge;
+            roll_drops(tables, "ClassGear", 8, normal_seed, normal, 1, 0, 6, 4, 1, 0, 0, 0);
+            roll_drops(tables, "ClassGear", 8, challenge_seed, challenge, 1, 0, 6, 4, 1, 0, 0, 100);
+            normal_count += int(normal.size()); challenge_count += int(challenge.size());
+            normal_usable += normal[0].code != "sorstaff";
+            challenge_usable += challenge[0].code != "sorstaff";
+            default_first += normal[0].code == "amabow";
+            default_second += normal[0].code == "sorstaff";
+        }
+        assert(normal_count == challenge_count && normal_count == 3000);
+        assert(default_first > 800 && default_first < 1200 && default_second > 800 && default_second < 1200);
+        assert(challenge_usable > normal_usable + 300);
+    }
     {   // A monster dropper caps the NoDrop players at its monster_playercount (stat 100).
         int eight = 0, capped = 0, alone = 0;
         Rng seed_a{ 5 }, seed_b{ 5 }, seed_c{ 5 };

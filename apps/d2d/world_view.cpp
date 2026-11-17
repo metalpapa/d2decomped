@@ -68,6 +68,24 @@ bool past_cof(const Unit& unit, std::uint32_t elapsed) {
     return unit.frames && elapsed / std::max<std::uint32_t>(unit.anim->ms_per_frame(), 1) >= std::uint32_t(unit.anim->cof.frames_per_direction());
 }
 
+void draw_corpse_blast_area(std::vector<std::uint8_t>& framebuffer, int screen_w, int centre_x, int centre_y, float radius, float fade) {
+    constexpr float kInvSqrt2 = 0.70710678f;
+    const float radius_x = radius * float(kIsoW) * kInvSqrt2, radius_y = radius * float(kIsoH) * kInvSqrt2;
+    const int left = std::max(centre_x - int(std::ceil(radius_x)), 0), right = std::min(centre_x + int(std::ceil(radius_x)), screen_w - 1);
+    const int top = std::max(centre_y - int(std::ceil(radius_y)), 0), bottom = std::min(centre_y + int(std::ceil(radius_y)), int(kScreenHeight) - 49);
+    for (int y = top; y <= bottom; ++y)
+        for (int x = left; x <= right; ++x) {
+            const float dx = float(x - centre_x) / radius_x, dy = float(y - centre_y) / radius_y, distance = std::hypot(dx, dy);
+            if (distance >= 1.f) continue;
+            const float rim = std::exp(-std::pow((distance - 0.94f) / 0.035f, 2.f));
+            const float alpha = std::min((0.16f * (1.f - distance * distance) + 0.55f * rim) * fade, 0.65f);
+            auto* pixel = &framebuffer[(std::size_t(y) * std::size_t(screen_w) + std::size_t(x)) * 4];
+            pixel[0] = std::uint8_t(float(pixel[0]) + (255.f - float(pixel[0])) * alpha);
+            pixel[1] = std::uint8_t(float(pixel[1]) * (1.f - alpha * 0.9f));
+            pixel[2] = std::uint8_t(float(pixel[2]) * (1.f - alpha * 0.9f));
+        }
+}
+
 }  // namespace
 
 const d2d::dc6::Frame* flippy_frame(const d2d::dc6::Sprite& sprite, std::uint32_t elapsed) {
@@ -429,6 +447,10 @@ void render_world(std::vector<std::uint8_t>& framebuffer,
             // its cell's (measured live: Lut Gholein's waypoint flames and braziers).
             const float back = unit.object ? 0.1f : 0.f;
             const auto [anchor_x, anchor_y] = iso_point(unit.x - back, unit.y - back);
+            if (unit.blast_radius > 0 && unit.blast_gone > unit.mode_ms && elapsed_ms >= unit.mode_ms && elapsed_ms < unit.blast_gone) {
+                const float fade = float(unit.blast_gone - elapsed_ms) / float(unit.blast_gone - unit.mode_ms);
+                draw_corpse_blast_area(framebuffer, screen_w, anchor_x, anchor_y, unit.blast_radius, fade);
+            }
             // Bright-alpha (draw mode 7): the unit under the cursor
             // (FUN_00467a10 -> FUN_00471ec0) and a Ghostly champion
             // (umod 36, FUN_005a1080). Its light doubles, clamped

@@ -513,6 +513,30 @@ auto Town::pad_focus() const -> std::optional<PadFocus> {
             const auto [focus_x, focus_y] = controls.focus();
             return PadFocus{ 9000 + controls.sel * 2 + controls.column + (controls.pad_page ? 1000 : 0), focus_x, focus_y };
         }
+        if (use_item.open()) {
+            if (use_item.state == d2d::client::use_item::State::kWaiting) return std::nullopt;
+            if (use_item.placed()) {
+                const auto& button = d2d::client::use_item::kButtons[0];
+                return PadFocus{ 5000 + use_item.npc, button.x + 10, button.bottom - 16 };
+            }
+            if (held) return PadFocus{ 5000 + use_item.npc, (d2d::client::use_item::kSlotX0 + d2d::client::use_item::kSlotX1) / 2,
+                                       (d2d::client::use_item::kSlotY0 + d2d::client::use_item::kSlotY1) / 2 };
+            if (scene)
+                for (const auto& item : character.items) {
+                    if (item.location != d2d::d2s::item_location::kStored || item.panel != d2d::d2s::item_panel::kInventory || !item.identified) continue;
+                    const bool accepted = use_item.hc_idx == d2d::client::use_item::kCharsi ? d2d::rules::imbuable(scene->rules, item, character.expansion)
+                                        : use_item.hc_idx == d2d::client::use_item::kLarzuk ? d2d::rules::socketable(scene->rules, item)
+                                        : use_item.hc_idx == d2d::client::use_item::kAnya && d2d::rules::nameable(scene->rules, item);
+                    if (!accepted) continue;
+                    const auto& layout = scene->inv_layout[std::size_t(std::max(character.character_class, 0))];
+                    const auto [width, height] = d2d::rules::item_size(scene->rules, item.code);
+                    return PadFocus{ 5000 + item.id,
+                                     layout.grid_x + item.column * layout.box_w + width * layout.box_w / 2,
+                                     layout.grid_y + item.row * layout.box_h + height * layout.box_h / 2 };
+                }
+            const auto& button = d2d::client::use_item::kButtons[1];
+            return PadFocus{ 5000 + use_item.npc, button.x + 10, button.bottom - 16 };
+        }
         if (skillbar.picking == 3) return std::nullopt;                // the wheel draws its own highlight
         if (skillbar.picking) {                                         // the hand's skill now, else its button
             const bool on_left = skillbar.picking == 1;
@@ -590,6 +614,13 @@ auto Town::pad_snap_points() const -> std::vector<pad::Point> {
         if (inv_open)
             for (int slot = d2d::d2s::body_location::kFirst; slot <= d2d::d2s::body_location::kLast; ++slot)
                 if (const auto& rect = inv.slots[std::size_t(slot)]; rect[2] > 0) centre(rect[0], rect[1], rect[2], rect[3]);
+        if (use_item.open()) {
+            centre(d2d::client::use_item::kSlotX0, d2d::client::use_item::kSlotY0,
+                   d2d::client::use_item::kSlotX1 - d2d::client::use_item::kSlotX0,
+                   d2d::client::use_item::kSlotY1 - d2d::client::use_item::kSlotY0);
+            for (const auto& button : d2d::client::use_item::kButtons)
+                centre(button.x, button.bottom - 32, button.x1 - button.x0, button.y1 - button.y0);
+        }
         if (skillbar.picking) {                                         // the picker's icons and both hands' buttons
             const bool on_left = skillbar.picking == 1;
             const auto rows = skillbar.rows(on_left);

@@ -449,6 +449,7 @@ struct ObjectRooms {
     std::vector<d2d::rules::Spawn>* spawns = nullptr;
     Spawning::LevelState* level_state = nullptr;
     int leader = 0;
+    bool more_monsters = false;
     d2d::rules::Population pop;
 
     [[nodiscard]] const d2d::rules::MonType* type_at(int type) const {
@@ -730,7 +731,8 @@ struct ObjectRooms {
     // a roll beats 20) and rolls unique or group (FUN_005be020), all on the room seed.
     void populate(bool none) {
         ++pop.rooms_done;
-        const int density = std::min(level.mon.density[std::size_t(pop.difficulty)], 10000);
+        const int base_density = level.mon.density[std::size_t(pop.difficulty)];
+        const int density = std::min(base_density * (more_monsters ? 150 : 100) / 100, 10000);
         if (none || density <= 0 || pop.rooms_total == 0 || index >= level.room_areas.size()) return;
         for (const auto& room_area : level.room_areas[index]) {
             if (!room_area.id || room_area.skip || (!room_area.left && !room_area.right)) continue;
@@ -1183,6 +1185,7 @@ bool ObjectRooms::none(const Level& level, std::size_t room_index) {
 
 // The game's seeds in for room `room_index`, the level's rooms up so far.
 void ObjectRooms::load(Spawning& spawning, std::size_t room_index) {
+    more_monsters = spawning.more_monsters;
     rgn = spawning.objects;
     game = spawning.game;
     superuniques = spawning.superuniques;

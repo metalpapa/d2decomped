@@ -156,7 +156,7 @@ struct View {
     std::vector<Shot> missiles;
     int attack = -1, attack_skill = 0;     // the monster the player's attacking (unit id), with what
     std::vector<Loot::GroundItem> ground;  // the level's floor
-    struct Fire { float x, y; const Npc* npc; std::uint32_t born = 0; };   // born: its mode's start (0: from the clock)
+    struct Fire { float x, y; const Npc* npc; std::uint32_t born = 0; float radius = 0; std::uint32_t gone = 0; };   // born: its mode's start (0: from the clock); radius: a transient ground highlight
     std::vector<Fire> fires;
     // The player's town portal where they stand (which 0: where it was cast,
     // 1: its twin in town), leading to level `to`.

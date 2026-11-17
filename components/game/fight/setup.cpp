@@ -46,9 +46,39 @@ auto Fight::monster_index(int id) const -> int {
 
 auto Fight::add_monster(Monster monster) -> void { add_monster(std::move(monster), mon_level); }
 
+auto Fight::challenge_monster(Monster& monster, bool enabled) -> void {
+        const int health_to = enabled ? 150 : 100, combat_to = enabled ? 125 : 100;
+        if (monster.challenge_health_pct == health_to && monster.challenge_combat_pct == combat_to) return;
+        const int old_max = monster.max_life_fine(), old_life = monster.life_fine();
+        const int old_health = monster.challenge_health_pct, old_combat = monster.challenge_combat_pct;
+        d2d::rules::scale_challenge_stats(monster.stats, old_health, health_to, old_combat, combat_to);
+        monster.max_life_frac = old_health > 0 ? int(std::int64_t(monster.max_life_frac) * health_to / old_health) : monster.max_life_frac;
+        const int new_max = monster.max_life_fine();
+        monster.set_life_fine(old_max > 0 ? int(std::int64_t(old_life) * new_max / old_max) : old_life);
+        monster.last_hp = monster.hit_points;
+        monster.challenge_health_pct = health_to;
+        monster.challenge_combat_pct = combat_to;
+    }
+
+auto Fight::set_challenge_monsters(bool enabled) -> void {
+        challenge_monsters = enabled;
+        if (remote_monsters) return;
+        for (auto& monster : monsters) challenge_monster(monster, enabled);
+        for (auto& [where, kept_monsters] : kept) {
+            (void)where;
+            for (auto& monster : kept_monsters) challenge_monster(monster, enabled);
+        }
+    }
+
+auto Fight::set_more_monsters(bool enabled) -> void {
+        more_monsters = enabled;
+        spawning.more_monsters = enabled;
+    }
+
 auto Fight::add_monster(Monster monster, const Level* where) -> void {
         monster.id = next_id++;
         monster.classic = !game_expansion;
+        if (challenge_monsters) challenge_monster(monster, true);
         const auto* made_level = where ? where : mon_level ? mon_level : level;
         if (made_level && (monster.boss == d2d::rules::Boss::unique || monster.boss == d2d::rules::Boss::superunique))
             made_bosses.push_back({ monster.id, monster.type, made_level->id });
@@ -66,6 +96,7 @@ auto Fight::new_game(int difficulty) -> void {
         game_difficulty = difficulty;
         game_expansion = actor->character.expansion;
         spawning = start_spawning(*game_data, difficulty);
+        spawning.more_monsters = more_monsters;
         monsters.clear();
         made_bosses.clear();
         mon_level = nullptr;

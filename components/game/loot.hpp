@@ -40,6 +40,7 @@ struct Loot {
     Cues& cues;
     Character* character = nullptr;        // the acting player's (World::act_as)
     UnitState* player = nullptr;
+    int class_loot_bias = 0;                // extra base-item weight for class-usable gear from elite monsters
     // Who stands on this level (the Crowd). Their 0x1000 / 0x2000 are not
     // in Level::walk. Null: no unit footprints (a level the player isn't on).
     const Crowd* standing = nullptr;
@@ -116,7 +117,11 @@ struct Loot {
         if (now_ms < blessed_until) magic_find += blessed_find;   // the wisps' dance (Fight::wisp_blessing)
         constexpr int kMost = 6;
         std::vector<d2d::rules::Drop> drops;
-        d2d::rules::roll_drops(game_data->rules, rolled, monster.stats.level, monster.seed, drops, players, magic_find, kMost, 0, nearby, std::max(monster.players, 1));
+        const bool elite = monster.boss == d2d::rules::Boss::champion || monster.boss == d2d::rules::Boss::unique
+                   || monster.boss == d2d::rules::Boss::superunique;
+        const int class_bias = elite ? class_loot_bias : 0;
+        d2d::rules::roll_drops(game_data->rules, rolled, monster.stats.level, monster.seed, drops, players, magic_find, kMost, 0, nearby,
+                       std::max(monster.players, 1), character->header.cls, class_bias);
         // FUN_0055a6d0 counts the drop before FUN_005589a0 (0x55af4c): the
         // one that fills the count leaves without gold find. A Hell Bovine's
         // drops are flagged 1 (FUN_0055a550): the Cow King set (29) drops.

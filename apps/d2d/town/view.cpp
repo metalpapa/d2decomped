@@ -26,6 +26,7 @@
 #include <panel_view.hpp>
 #include <quests.hpp>
 #include <rules.hpp>
+#include <show_items.hpp>
 #include <uniques.hpp>
 #include <userdir.hpp>
 #include <weather.hpp>
@@ -147,19 +148,27 @@ void rank_ground_labels(const GameData& game_data, const Level& level, float x, 
 
 void view_units(const Scene& scene, const View& view, float camera_x, float camera_y, const std::string* merc_label, std::vector<Unit>& out,
                 std::span<const View::Shot> effects , std::uint32_t now_ms , const std::string* corpse_name , int cls ,
-                StateClock* clk) {
+                StateClock* clk, bool hide_low_value_labels) {
     auto in_view = [&](float x, float y) { return std::abs(x - camera_x) < 14 && std::abs(y - camera_y) < 14; };
     for (std::size_t i = 0; i < view.ground.size(); ++i) {
         const auto& ground_item = view.ground[i];
         if (!in_view(ground_item.x, ground_item.y)) continue;
-        Unit unit{ ground_item.x, ground_item.y, nullptr, 0, &ground_item.label, ground_item.now_ms, -1000 - int(i) };
+        const auto info = scene.rules.item_info.find(ground_item.item.code);
+        const std::string* label = &ground_item.label;
+        if (hide_low_value_labels && (ground_item.gold > 0 || (info != scene.rules.item_info.end()
+            && d2d::rules::low_value_item_label(ground_item.item.code, info->second.type)))) label = nullptr;
+        Unit unit{ ground_item.x, ground_item.y, nullptr, 0, label, ground_item.now_ms, -1000 - int(i) };
         unit.sprite = scene.flippy(ground_item.item.code);
         if (unit.sprite) unit.sprite_file = scene.rules.item_info.at(ground_item.item.code).flippy;
         unit.cmap = scene.item_map(ground_item.item, false);   // FUN_00471ec0: the character's colours
         unit.rgb = ground_item.rgb;
         out.push_back(std::move(unit));
     }
-    for (const auto& fire : view.fires) out.push_back({ fire.x, fire.y, &scene.npc_anim(*fire.npc, fire.npc->mode), 0, nullptr, fire.born, -2 });
+    for (const auto& fire : view.fires) {
+        out.push_back({ fire.x, fire.y, &scene.npc_anim(*fire.npc, fire.npc->mode), 0, nullptr, fire.born, -2 });
+        out.back().blast_radius = fire.radius;
+        out.back().blast_gone = fire.gone;
+    }
     // Local co-op's fallen: their bodies where they fell, lying as a corpse lies.
     for (const auto& body : view.bodies) {
         const auto& anim = scene.composite(body.cls, kModeDT, body.gfx);

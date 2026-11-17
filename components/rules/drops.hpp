@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -165,13 +166,45 @@ inline std::string tc_upgrade(const Tables& tables, std::string name, int lvl) {
 }
 
 namespace detail {
+inline bool class_usable_gear(const Tables& tables, std::string_view code, int player_class) {
+    static constexpr std::array<std::string_view, 7> kClassTypes{ "ama", "sor", "nec", "pal", "bar", "dru", "ass" };
+    if (player_class < 0 || std::size_t(player_class) >= kClassTypes.size()) return false;
+    const auto item = tables.item_info.find(std::string(code));
+    if (item == tables.item_info.end() || item->second.kind == 0) return false;
+    std::string type_name = item->second.type;
+    for (int depth = 0; depth < 16 && !type_name.empty(); ++depth) {
+        const auto type = tables.types.find(type_name);
+        if (type == tables.types.end()) break;
+        if (!type->second.cls.empty()) {
+            if (type->second.cls != kClassTypes[std::size_t(player_class)]) return false;
+        }
+        type_name = type->second.equiv[0].empty() ? type->second.equiv[1] : type->second.equiv[0];
+    }
+    return true;
+}
+
 // One class's picks (a frame of FUN_0055a6d0's stack), NoDrop for `shares`
 // players; false once `max` items dropped (the whole roll stops).
 inline bool roll_class(const Tables& tables, const TreasureClass& treasure, std::array<int, 4> mod, int ilvl, Rng& rng, std::vector<Drop>& out,
-                       int& count, int max, int shares, int magic_find, int depth, int forced = 0) {
+                       int& count, int max, int shares, int magic_find, int depth, int forced, int player_class, int class_bias) {
     for (int i = 0; i < 4; ++i) mod[std::size_t(i)] = std::max(mod[std::size_t(i)], treasure.mod[std::size_t(i)]);
     int total = 0;
-    for (const auto& [name, chance] : treasure.items) total += chance;
+    std::vector<bool> usable;
+    usable.reserve(treasure.items.size());
+    bool class_weighted = false;
+    for (const auto& [name, chance] : treasure.items) {
+        total += chance;
+        const bool bias = treasure.picks >= 0 && class_bias > 0 && class_usable_gear(tables, name, player_class);
+        class_weighted = class_weighted || bias;
+        usable.push_back(bias);
+    }
+    std::vector<int> weights;
+    weights.reserve(treasure.items.size());
+    for (std::size_t entry = 0; entry < treasure.items.size(); ++entry) {
+        const int weight = treasure.items[entry].second;
+        weights.push_back(class_weighted ? weight * (usable[entry] ? 100 + class_bias : 100) : weight);
+    }
+    const int weighted_total = std::accumulate(weights.begin(), weights.end(), 0);
     if (total == 0) return true;
     int nodrop = treasure.nodrop;
     // More players (roll_drops' n) shrink NoDrop to total * p^n / (1 - p^n),
@@ -190,14 +223,15 @@ inline bool roll_class(const Tables& tables, const TreasureClass& treasure, std:
             roll = rng(nodrop + total);
             if (roll < nodrop) continue;
             roll -= nodrop;
+            if (class_weighted && weighted_total > 0) roll = rng(weighted_total);
         } else if (roll >= total) break;
         for (std::size_t entry = 0; entry < treasure.items.size(); ++entry) {
             const auto& name = treasure.items[entry].first;
-            const int chance = treasure.items[entry].second;
+            const int chance = weights[entry];
             if (roll >= chance) { roll -= chance; continue; }
             const int flags = entry < treasure.entry_flags.size() ? treasure.entry_flags[entry] : 0;
             if (const auto sub = tables.treasure.find(name); sub != tables.treasure.end()) {
-                if (depth < 64 && !roll_class(tables, sub->second, mod, ilvl, rng, out, count, max, shares, magic_find, depth + 1, forced)) return false;
+                if (depth < 64 && !roll_class(tables, sub->second, mod, ilvl, rng, out, count, max, shares, magic_find, depth + 1, forced, player_class, class_bias)) return false;
             } else if (name.starts_with("gld")) {
                 const auto multiplier_at = name.find("mul=");
                 out.push_back({ "gld", forced ? forced : 2, 0, multiplier_at == std::string::npos ? 0 : std::atoi(name.c_str() + multiplier_at + 4) });
@@ -244,13 +278,14 @@ inline bool roll_class(const Tables& tables, const TreasureClass& treasure, std:
 // 1, FUN_0044be50) caps n at its monster_playercount (stat 100, at least 1):
 // `dropper_players`, 0 for none.
 inline void roll_drops(const Tables& tables, const std::string& treasure_class, int ilvl, Rng& rng, std::vector<Drop>& out,
-                       int players = 1, int magic_find = 0, int max = 6, int forced = 0, int nearby = 1, int dropper_players = 0) {
+                       int players = 1, int magic_find = 0, int max = 6, int forced = 0, int nearby = 1, int dropper_players = 0,
+                       int player_class = -1, int class_bias = 0) {
     const auto found = tables.treasure.find(treasure_class);
     if (found == tables.treasure.end()) return;
     int count = 0;
     int rolls_for = nearby + (players - nearby) / 2;
     if (dropper_players > 0) rolls_for = std::min(rolls_for, dropper_players);
-    detail::roll_class(tables, found->second, {}, ilvl, rng, out, count, max, rolls_for, magic_find, 0, forced);
+    detail::roll_class(tables, found->second, {}, ilvl, rng, out, count, max, rolls_for, magic_find, 0, forced, player_class, std::clamp(class_bias, 0, 1000));
 }
 
 // One chest round (FUN_00585b90): its class `tc` (chest_tc) off the

@@ -102,8 +102,25 @@ public:
             const auto* glyph = find(letter);
             if (!glyph) continue;
             const auto& frame = sheet_.frame(0, glyph->frame);
-            blit_glyph_tinted(framebuffer, fbW, fbH, pal, frame, x, y, tint_red, tint_green, tint_blue, clip_y0, clip_y1);
+            blit_glyph_tinted(framebuffer, fbW, fbH, pal, frame, x, y, tint_red, tint_green, tint_blue, 1, clip_y0, clip_y1);
             x += glyph->width;
+        }
+        return x;
+    }
+
+    int draw_tinted_scaled(std::vector<std::uint8_t>& framebuffer,
+                           std::uint32_t fbW, std::uint32_t fbH,
+                           const palette::Palette& pal,
+                           int x, int y, std::string_view text,
+                           std::uint8_t tint_red, std::uint8_t tint_green, std::uint8_t tint_blue,
+                           int scale, int clip_y0 = 0, int clip_y1 = 1 << 30) const {
+        if (scale < 1) return x;
+        for (unsigned char letter : text) {
+            const auto* glyph = find(letter);
+            if (!glyph) continue;
+            const auto& frame = sheet_.frame(0, glyph->frame);
+            blit_glyph_tinted(framebuffer, fbW, fbH, pal, frame, x, y, tint_red, tint_green, tint_blue, scale, clip_y0, clip_y1);
+            x += glyph->width * scale;
         }
         return x;
     }
@@ -115,14 +132,24 @@ public:
                              const palette::Palette& palette, int x, int baseline,
                              std::string_view text, std::uint8_t tint_red,
                              std::uint8_t tint_green, std::uint8_t tint_blue) const {
+        return draw_tinted_baseline_scaled(framebuffer, framebuffer_width, framebuffer_height, palette, x, baseline,
+                                           text, tint_red, tint_green, tint_blue, 1);
+    }
+
+    int draw_tinted_baseline_scaled(std::vector<std::uint8_t>& framebuffer,
+                                    std::uint32_t framebuffer_width, std::uint32_t framebuffer_height,
+                                    const palette::Palette& palette, int x, int baseline,
+                                    std::string_view text, std::uint8_t tint_red,
+                                    std::uint8_t tint_green, std::uint8_t tint_blue, int scale) const {
+        if (scale < 1) return x;
         for (unsigned char letter : text) {
             const auto* glyph = find(letter);
             if (!glyph) continue;
             const auto& frame = sheet_.frame(0, glyph->frame);
             blit_glyph_tinted(framebuffer, framebuffer_width, framebuffer_height, palette, frame,
-                             x + frame.offset_x, baseline + frame.offset_y - int(frame.height) + 1,
-                             tint_red, tint_green, tint_blue, 0, 1 << 30);
-            x += glyph->width;
+                             x + frame.offset_x * scale, baseline + frame.offset_y * scale - int(frame.height) * scale + scale,
+                             tint_red, tint_green, tint_blue, scale, 0, 1 << 30);
+            x += glyph->width * scale;
         }
         return x;
     }
@@ -134,21 +161,26 @@ private:
                                   const dc6::Frame& frame,
                                   int dst_x, int dst_y,
                                   std::uint8_t tint_red, std::uint8_t tint_green, std::uint8_t tint_blue,
+                                 int scale,
                                   int clip_y0, int clip_y1) {
         for (std::uint32_t glyph_y = 0; glyph_y < frame.height; ++glyph_y) {
-            const int pixel_y = dst_y + int(glyph_y);
-            if (pixel_y < 0 || std::uint32_t(pixel_y) >= fbH || pixel_y < clip_y0 || pixel_y >= clip_y1) continue;
             for (std::uint32_t glyph_x = 0; glyph_x < frame.width; ++glyph_x) {
-                const int pixel_x = dst_x + int(glyph_x);
-                if (pixel_x < 0 || std::uint32_t(pixel_x) >= fbW) continue;
                 const auto idx = frame.pixels[glyph_y * frame.width + glyph_x];
                 if (idx == 0) continue;
                 const auto colour = pal[idx];
-                auto* pixel = &framebuffer[(std::size_t(pixel_y) * fbW + std::uint32_t(pixel_x)) * 4];
-                pixel[0] = std::uint8_t(int(colour.r) * tint_red / 255);
-                pixel[1] = std::uint8_t(int(colour.g) * tint_green / 255);
-                pixel[2] = std::uint8_t(int(colour.b) * tint_blue / 255);
-                pixel[3] = colour.a;
+                for (int scaled_y = 0; scaled_y < scale; ++scaled_y) {
+                    const int pixel_y = dst_y + int(glyph_y) * scale + scaled_y;
+                    if (pixel_y < 0 || std::uint32_t(pixel_y) >= fbH || pixel_y < clip_y0 || pixel_y >= clip_y1) continue;
+                    for (int scaled_x = 0; scaled_x < scale; ++scaled_x) {
+                        const int pixel_x = dst_x + int(glyph_x) * scale + scaled_x;
+                        if (pixel_x < 0 || std::uint32_t(pixel_x) >= fbW) continue;
+                        auto* pixel = &framebuffer[(std::size_t(pixel_y) * fbW + std::uint32_t(pixel_x)) * 4];
+                        pixel[0] = std::uint8_t(int(colour.r) * tint_red / 255);
+                        pixel[1] = std::uint8_t(int(colour.g) * tint_green / 255);
+                        pixel[2] = std::uint8_t(int(colour.b) * tint_blue / 255);
+                        pixel[3] = colour.a;
+                    }
+                }
             }
         }
     }

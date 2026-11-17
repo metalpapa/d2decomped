@@ -66,6 +66,16 @@ int main() try {
     assert(world.fight.monsters[2].usable_corpse());
     world.fight.monsters[2].corpse_used = true;
     assert(!world.fight.monsters[2].usable_corpse());
+    world.fight.monsters[2].corpse_used = false;
+    world.fight.mon_level = world.level;
+    const auto* explosion = world.fight.skill_named("Corpse Explosion");
+    assert(explosion);
+    world.fight.corpse_blast(*explosion, 1, 2, 1000);
+    const auto exploded = world.view();
+    assert(std::ranges::any_of(exploded.fires, [&](const View::Fire& fire) {
+        return fire.npc == &data->trap_fires[0] && fire.x == world.fight.monsters[2].unit.x && fire.y == world.fight.monsters[2].unit.y
+            && fire.radius > 0 && fire.gone > fire.born;
+    }));
     std::printf("usable_corpse: ok\n");
     return 0;
 } catch (const std::exception& error) {

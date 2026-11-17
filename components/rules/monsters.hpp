@@ -289,6 +289,21 @@ struct MonStats {
     int poison_min = 0, poison_max = 0, poison_len = 0;
     bool prime_evil = false;                  // MonStats primeevil (+0xc & 0x80, FUN_0063edc0): FUN_0057c060's pair percent
 };
+
+inline void scale_challenge_stats(MonStats& stats, int health_from, int health_to, int combat_from, int combat_to) {
+    const auto scale = [](int value, int from, int to) { return from > 0 ? int(std::int64_t(value) * to / from) : value; };
+    stats.hit_points = std::max(scale(stats.hit_points, health_from, health_to), 1);
+    stats.regen = scale(stats.regen, health_from, health_to);
+    for (int* value : { &stats.armor_class, &stats.to_hit, &stats.to_hit2, &stats.to_hit_s1,
+                        &stats.a1_min, &stats.a1_max, &stats.a2_min, &stats.a2_max, &stats.s1_min, &stats.s1_max,
+                        &stats.poison_min, &stats.poison_max, &stats.poison_len })
+        *value = scale(*value, combat_from, combat_to);
+    for (auto& element : stats.elements) {
+        element.min = scale(element.min, combat_from, combat_to);
+        element.max = scale(element.max, combat_from, combat_to);
+    }
+}
+
 // The max damage a monster's last swing left in its stats (FUN_005a4f50,
 // at each attack mode: A2's for A2, S1's for SC / S1, A1's otherwise; each
 // element of that mode as its own stat, poison x 10), as Diablo's score

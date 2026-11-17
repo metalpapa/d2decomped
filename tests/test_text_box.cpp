@@ -83,6 +83,23 @@ static void baseline_pixels() {
         const bool expected = (x == 6 || x == 8) && y >= 7 && y <= 9;
         assert((framebuffer[std::size_t((y * 16 + x) * 4 + 3)] != 0) == expected);
     }
+    std::vector<std::uint8_t> scaled_baseline(16 * 16 * 4);
+    assert(font.draw_tinted_baseline_scaled(scaled_baseline, 16, 16, palette, 4, 10, "A", 255, 255, 255, 2) == 8);
+    for (int y = 0; y < 16; ++y) for (int x = 0; x < 16; ++x) {
+        const bool expected = (x == 8 || x == 9) && y >= 4 && y <= 9;
+        assert((scaled_baseline[std::size_t((y * 16 + x) * 4 + 3)] != 0) == expected);
+    }
+
+    std::vector<std::uint8_t> normal(16 * 16 * 4), scaled(16 * 16 * 4);
+    assert(font.draw_tinted(normal, 16, 16, palette, 4, 4, "A", 255, 255, 255) == 6);
+    assert(font.draw_tinted_scaled(scaled, 16, 16, palette, 4, 4, "A", 255, 255, 255, 2) == 8);
+    for (int y = 0; y < 16; ++y) for (int x = 0; x < 16; ++x) {
+        const int source_x = x >= 4 ? 4 + (x - 4) / 2 : -1;
+        const int source_y = y >= 4 ? 4 + (y - 4) / 2 : -1;
+        const bool expected = source_x >= 0 && source_y >= 0 && source_x < 16 && source_y < 16
+            && normal[std::size_t((source_y * 16 + source_x) * 4 + 3)] != 0;
+        assert((scaled[std::size_t((y * 16 + x) * 4 + 3)] != 0) == expected);
+    }
 }
 
 int main(int argc, char** argv) try {

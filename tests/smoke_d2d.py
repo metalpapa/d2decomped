@@ -404,33 +404,46 @@ try:
         cmd("debug skillpts 1"); cmd("key t"); frames()
         assert state()["tree"] != "0"
         cmd("key t"); frames()
-    # Esc opens the game menu (FUN_0047e090) on Return to Game; Options ->
+    # Esc opens the game menu (FUN_0047e090) on the TrimUI Save row; Options ->
     # Sound Options, its Sound slider down a step and back (vol = val*100/20).
     cmd("key Escape"); frames()
-    assert state()["gamemenu"] == "1:2", state()
+    assert state()["gamemenu"] == "1:1", state()
     def keys(*names):
         for name in names:
             cmd("key " + name); frames(2)
-    keys("Up", "Up", "Return")
-    assert state()["gamemenu"] == "2:4", state()
-    keys("Up", "Up", "Up", "Up", "Return")
+    keys("Up", "Return")                            # Options
+    assert state()["gamemenu"] == "2:5", state()
+    cmd("click 400 135"); frames(3)                  # Sound Options
     assert state()["gamemenu"] == "3:7", state()
-    keys("Down", "Left")
+    cmd("click 601 140"); frames(3)                  # Sound slider: one step down
     st = state()
     assert st["gamemenu"] == "3:1" and st["volume"] == "95,50", st
-    keys("Right")
+    cmd("click 622 140"); frames(3)                  # restore full volume
     assert state()["volume"] == "100,50", state()
     cmd("key Escape"); frames()                     # closes the menu
     assert state()["gamemenu"].startswith("0:") and state()["screen"] == "ingame"
+
+    # Optional challenge settings are independent, persist in the isolated cfg,
+    # and can all be disabled again without changing the save's difficulty.
     cmd("key Escape"); frames()
-    keys("Up", "Return")                            # Save and Exit Game: back to the roster
-    assert state()["screen"] == "charselect"
-    cmd("click 142 120"); frames(2); cmd("click 142 120")   # double-click plays
-    frames()
+    keys("Up", "Return")                            # Options
+    keys("Up", "Up", "Return")                     # Challenge Options
+    assert state()["gamemenu"] == "6:1", state()
+    for index in range(4):
+        keys("Return")
+        if index < 3: keys("Down")
+    with open(os.path.join(user, "d2d.cfg")) as f:
+        cfg = dict(line.split(" = ", 1) for line in f.read().splitlines() if " = " in line)
+    assert cfg.get("challenge_monsters") == "1" and cfg.get("challenge_more_monsters") == "1" and cfg.get("challenge_class_loot") == "1" and cfg.get("loot_filter") == "1", cfg
+    for index in range(4):
+        keys("Return")
+        if index < 3: keys("Up")
+    with open(os.path.join(user, "d2d.cfg")) as f:
+        cfg = dict(line.split(" = ", 1) for line in f.read().splitlines() if " = " in line)
+    assert cfg.get("challenge_monsters") == "0" and cfg.get("challenge_more_monsters") == "0" and cfg.get("challenge_class_loot") == "0" and cfg.get("loot_filter") == "0", cfg
+    cmd("key Escape"); frames()
     st = state()
-    assert st["screen"] == "ingame"
-    if not real:
-        assert st["class"] == "3" and st["name"] == "Alpha" and st["hardcore"] == "1"
+    assert st["difficulty"] == "0" and st["screen"] == "ingame", st
 
     cam0 = st["cam"]
     cmd("click 2 300")                # mouse at left edge -> pan left
@@ -457,6 +470,8 @@ try:
     # across it into the Blood Moor; its west edge leads back. On normal:
     # the first real save (the last played) may be a Hell character whose
     # merc and self die to the Fallen before the attack below lands.
+    cmd("debug stat 7 256000"); cmd("debug stat 6 256000"); frames(2)
+    assert int(state()["life"].split("/")[0]) > 0, "combat smoke needs a living player"
     cmd("debug difficulty 0"); frames(6)
     lv = cmd("debug level").split()
     assert lv[1] == "1", lv
@@ -531,13 +546,10 @@ try:
     name = state()["name"]
     cmd("debug stat 14 777"); frames(2)
     cmd("save")
-    for _ in range(6):
-        if state()["screen"] == "charselect":
-            break
-        if not state()["gamemenu"].startswith("0:"):
-            cmd("key Up"); frames(2); cmd("key Return"); frames(6)   # Save and Exit Game
-        else:
-            cmd("key Escape"); frames(6)
+    cmd("key Escape"); frames(3)
+    assert state()["gamemenu"].startswith("1:"), "Escape didn't open the game menu"
+    cmd("key Down"); frames(2)                # Save -> Exit
+    cmd("key Return"); frames(6)
     st = state()
     assert st["screen"] == "charselect" and st["save"] == "0", st
     assert os.path.exists(os.path.join(saves, name + ".d2s.bak")), "no backup of the original save"

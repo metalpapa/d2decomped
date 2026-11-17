@@ -87,6 +87,7 @@ int main() try {
         sent.game_quests.back() = 0x8000;
         sent.events = { ev::Reassigned{}, ev::Lightning{}, ev::MusicCue{ .sound = 0x1250, .jingle_ms = 40, .back_ms = 12000, .from_block = true }, ev::QuestQuake{ d2d::rules::QuestQuake::diablo } };
         sent.party_pets.push_back({ Npc{}, UnitState{}, "WL", "hireable", 100 });   // a partner's merc (local co-op)
+        sent.fires.push_back({ 2.5f, 3.5f, &empty_data.trap_fires[0], 120, 1.25f, 840 });
         sent.panel.next = 3'000'000'000; sent.panel.defense = 345; sent.panel.res = { 75, -100, 12, 40 }; sent.panel.bonus[3] = 7;
         sent.panel.blue = d2d::rules::kPanelDefense; sent.panel.red = d2d::rules::kPanelFire | d2d::rules::kPanelPoison;
         sent.stat_sum = { { 0, 25 }, { 329, 40 } };
@@ -113,6 +114,9 @@ int main() try {
         const auto& music = std::get<ev::MusicCue>(received.events[2]);   // a quest's music sequence (rules::QuestMusic)
         assert(music.sound == 0x1250 && music.jingle_ms == 40 && music.back_ms == 12000 && music.from_block);
         assert(received.pets.empty() && received.party_pets.size() == 1 && received.party_pets[0].pettype == "hireable" && received.party_pets[0].mode == "WL");
+        assert(received.fires.size() == 1 && received.fires[0].npc == &empty_data.trap_fires[0]);
+        assert(received.fires[0].x == 2.5f && received.fires[0].y == 3.5f && received.fires[0].born == 120);
+        assert(received.fires[0].radius == 1.25f && received.fires[0].gone == 840);
         auto bad = bytes;
         assert(bad[bad.size() - 4] == 7);   // final event, before the empty sound count
         bad[bad.size() - 3] = 2;

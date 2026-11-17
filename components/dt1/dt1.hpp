@@ -114,8 +114,12 @@ public:
     [[nodiscard]] bool resident() const noexcept { return resident_; }
     // Decodes the same file again into the tiles' (empty) pixel buffers.
     bool restore_pixels(std::span<const std::byte> bytes) {
+        if (!restorable_) return false;
         Archive fresh(bytes, Pixels::decode);
         if (fresh.tiles_.size() != tiles_.size()) return false;
+        for (std::size_t i = 0; i < tiles_.size(); ++i)
+            if (fresh.tiles_[i].width != tiles_[i].width || fresh.tiles_[i].height != tiles_[i].height
+                || fresh.tiles_[i].y_shift != tiles_[i].y_shift || fresh.tiles_[i].blocks != tiles_[i].blocks) return false;
         for (std::size_t i = 0; i < tiles_.size(); ++i) tiles_[i].pixels = std::move(fresh.tiles_[i].pixels);
         resident_ = true;
         return true;
@@ -123,6 +127,7 @@ public:
 
 private:
     bool resident_ = true;
+    bool restorable_ = false;
     static std::int16_t rd_i16(const std::byte* source) {
         std::int16_t value; std::memcpy(&value, source, 2); return value;
     }
@@ -134,6 +139,7 @@ private:
     }
 
     void parse(std::span<const std::byte> bytes, Pixels pixels) {
+        resident_ = pixels == Pixels::decode;
         if (bytes.size() < 0x114) throw std::runtime_error("DT1: truncated header");
 
         const auto major = rd_i32(bytes.data());
@@ -235,6 +241,7 @@ private:
                 }
             }
         }
+        restorable_ = true;
     }
 
     static std::size_t buf_height(const Tile& tile) {

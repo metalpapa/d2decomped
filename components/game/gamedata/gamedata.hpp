@@ -13,6 +13,7 @@
 #include <drlg.hpp>
 #include <ds1.hpp>
 #include <dt1.hpp>
+#include <dt1_cache.hpp>
 #include <level_ids.hpp>
 #include <mon_equip.hpp>
 #include <monsters.hpp>
@@ -531,6 +532,7 @@ struct GameData {
     std::array<Appearance, 7>         starting_gear{};  // per d2s class, CharStats.txt
     // Kept open for lazy loads after startup.
     d2d::mpq::Stack mpqs;
+    std::shared_ptr<d2d::dt1::ArchiveCache> dt1_cache = std::make_shared<d2d::dt1::ArchiveCache>();
     // True when 1.14d patch data is layered in. Without it patchstring.tbl
     // is the CD's (826 entries), whose IDs don't match what 1.14d code asks
     // for (10832 is "CREATE NEW" in 1.14d, "Bonus to Attack Rating" on CD).
@@ -964,7 +966,8 @@ constexpr const char* kLayerCode[16] = {
 // leading "\d2\" prefix and forward slashes never — normalize both.
 // A tileset decoded once for every level using it (each outdoor level of an act loads the same ~29 files).
 // Null when the MPQs lack it; throws on a bad file. Any thread.
-std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, const std::string& mpq_path, d2d::dt1::Pixels pixels);
+std::shared_ptr<d2d::dt1::Archive> shared_dt1(const d2d::mpq::Stack& mpqs, d2d::dt1::ArchiveCache& cache,
+                                              const std::string& mpq_path, d2d::dt1::Pixels pixels);
 
 [[nodiscard]] inline std::string ds1_path_to_mpq(std::string_view path) {
     if (path.size() > 4 && (path.starts_with("\\d2\\") || path.starts_with("/d2/")))
@@ -1061,6 +1064,7 @@ struct Spawning {
         std::vector<std::optional<d2d::rules::Rng>> early_seeds;
     };
     int difficulty = 0;
+    bool more_monsters = false;
     d2d::rules::Rng game;
     // The game's object seed (game +0x10f0, FUN_00546c60): every room's
     // objects, shrines, chests and every container opened step it, game-wide.
@@ -1272,7 +1276,8 @@ void finish_level(Level& level);
 [[nodiscard]] inline bool in_town(const Level* level) { return level && d2d::rules::level_ids::is_town(level->id); }
 // A town's spawn spots from its DS1 specials: Level::start, portal_spot.
 void find_spawn_spots(Level& level);
-LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::drlg::OutdoorAssets& assets, int type, d2d::dt1::Pixels pixels);
+LevelDt1s load_level_dt1s(Level& level, d2d::mpq::Stack& mpqs, d2d::dt1::ArchiveCache& cache,
+                          d2d::drlg::OutdoorAssets& assets, int type, d2d::dt1::Pixels pixels);
 std::size_t set_level_tiles(Level& level, const d2d::drlg::OutdoorAssets& assets, const LevelDt1s& dt1s,
                             const std::vector<d2d::drlg::Outdoor::RoomSeed>& made, const std::vector<d2d::drlg::PlainRoom>& plain,
                             std::vector<std::string>& notes);

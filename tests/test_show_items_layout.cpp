@@ -25,6 +25,13 @@ d2d::rules::LabelRect built(int x, int y, int text_w, int text_h) {
 }  // namespace
 
 int main(int argc, char** argv) try {
+    assert(d2d::rules::low_value_item_label("gld", "gld"));
+    assert(d2d::rules::low_value_item_label("hp1", "hpot"));
+    assert(d2d::rules::low_value_item_label("mp1", "mpot"));
+    assert(d2d::rules::low_value_item_label("rp1", "rpot"));
+    assert(!d2d::rules::low_value_item_label("r01", "rune"));
+    assert(!d2d::rules::low_value_item_label("leg", "ques"));
+    assert(!d2d::rules::low_value_item_label("amabow", "amazonbow"));
     if (argc > 1) {
         std::ifstream input(argv[1]);
         for (std::string line; std::getline(input, line);) {

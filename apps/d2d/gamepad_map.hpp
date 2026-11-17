@@ -336,7 +336,14 @@ struct Actions {
 
 // What the pad is doing with the skill-button screens, on top of Context.
 // None is every screen the default layout plays.
-enum class SkillUi { None, Wheel, Strip };
+enum class SkillUi { None, Wheel, Strip, Picker };
+inline SkillUi skill_ui_for(bool controls_open, bool skill_buttons, int picking, int skill_strip) {
+    if (controls_open) return SkillUi::None;
+    if (picking == 1 || picking == 2) return SkillUi::Picker;
+    if (!skill_buttons) return SkillUi::None;
+    if (picking == 3) return SkillUi::Wheel;
+    return skill_strip >= 0 ? SkillUi::Strip : SkillUi::None;
+}
 
 // A screen direction as a world one: the inverse of the isometric projection
 // the cursor's click uses (Town::input), normalised, times `reach` tiles.
@@ -489,8 +496,10 @@ public:
         out.click_press = out.click_down && !click_prev_ && (!game || hit(Action::Primary));
         out.click_release = !out.click_down && click_prev_;
         click_prev_ = out.click_down;
-        out.rclick_press = hit(Action::Secondary) ||
-                           (skills && (context == Context::Panel || context == Context::Shop) && hit(Action::Interact));
+        const bool hand_picker = skill_ui == SkillUi::Picker;
+        out.rclick_press = (!hand_picker && hit(Action::Secondary)) ||
+                   (skills && (context == Context::Panel || context == Context::Shop) && hit(Action::Interact));
+        if (hand_picker) key(Action::Secondary, Key::Escape);
 
         // The aiming stick (the right one; the left one when swapped): the cursor. In the menus the other one moves it too.
         const float walk_x = config_.swap_sticks ? sample.rx : sample.lx, walk_y = config_.swap_sticks ? sample.ry : sample.ly;

@@ -24,6 +24,10 @@ Sample with(Button which) { Sample sample; sample.held[std::size_t(which)] = tru
 }
 
 int main() try {
+    assert(skill_ui_for(false, false, 2, -1) == SkillUi::Picker);
+    assert(skill_ui_for(false, true, 3, -1) == SkillUi::Wheel);
+    assert(skill_ui_for(false, true, 0, 0) == SkillUi::Strip);
+    assert(skill_ui_for(true, true, 2, -1) == SkillUi::None);
     // Inside the dead zone nothing moves.
     {
         Mapper mapper;
@@ -178,6 +182,15 @@ int main() try {
         mapper.step(Sample{}, Context::Panel, 0.016f);
         actions = mapper.step(with(Button::RightStick), Context::Panel, 0.016f);
         assert(!actions.skill_picker && actions.recentre_cursor);
+    }
+    // East/B cancels a hand's skill picker instead of casting the secondary skill; in the field it still casts.
+    {
+        Mapper mapper;
+        Actions actions = mapper.step(with(Button::East), Context::Game, 0.016f, SkillUi::Picker);
+        assert(has(actions, Key::Escape) && !actions.rclick_press);
+        mapper.step(Sample{}, Context::Game, 0.016f, SkillUi::Picker);
+        actions = mapper.step(with(Button::East), Context::Game, 0.016f);
+        assert(actions.rclick_press && actions.keys.empty());
     }
     // The left trigger swaps weapons in the game, once per pull (hysteresis); B alone is the right-hand skill.
     {

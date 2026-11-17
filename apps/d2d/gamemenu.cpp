@@ -26,6 +26,7 @@ namespace d2d::client {
 namespace {
 
 constexpr int kWidth = int(kScreenWidth), kHeight = int(kScreenHeight);
+constexpr int kMenuTextScale = 2, kMenuTextMargin = 24;
 
 // A menu row (0x550 bytes in game.exe): type -1 title, 0 button, 1 choice,
 // 2 slider; xp rows are LoD's only; count / def the choices or slider
@@ -39,17 +40,12 @@ struct Row {
     std::array<std::string_view, 4> choices;
 };
 struct Menu {
-    int step, text_dy, pent_dy, slider_dy;   // the header's {step, text, cursor, slider} y offsets
+    int step, pent_dy, slider_dy;
     std::span<const Row> rows;
 };
 constexpr Row kMain[] = {                          // 0x713044
     { 0, false, "Options", 0, 0, false, {} },
-    // TrimUI-only row (user-requested): save without leaving the game. Not
-    // in game.exe's own menu (it never had a standalone "Save" button) and
-    // needs its own label image once one exists (data\local\UI\ENG\Save.dc6,
-    // a custom patch-layer MPQ override — see d2d.cfg's `patch =`); until
-    // then this row draws with no visible label (text_image finds nothing)
-    // but still works if clicked/selected.
+    // TrimUI-only row: save without leaving the game.
     { 0, false, "Save", 0, 0, false, {} },
     { 0, false, "Exit", 0, 0, false, {} },
     { 0, false, "ReturnToGame", 0, 0, false, {} },
@@ -58,6 +54,7 @@ constexpr Row kOptions[] = {                       // 0x714210
     { 0, false, "SoundOptions", 0, 0, false, {} },
     { 0, false, "VideoOptions", 0, 0, false, {} },
     { 0, false, "AutoMapOptions", 0, 0, false, {} },
+    { 0, false, "ChallengeOptions", 0, 0, false, {} },
     { 0, false, "CfgOptions", 0, 0, false, {} },
     { 0, false, "Previous", 0, 0, false, {} },
 };
@@ -92,9 +89,17 @@ constexpr Row kAutomap[] = {                       // LoD 0x71d734 (classic 0x71
     { 1, false, "AutoMapPartyNames", 2, 1, false, { "SmallNo", "SmallYes" } },
     { 0, false, "SPrevious", 0, 0, false, {} },
 };
+constexpr Row kChallenge[] = {
+    { -1, false, "ChallengeOptions", 0, 0, false, {} },
+    { 1, false, "HarderMonsters", 2, 0, false, { "SmallOff", "SmallOn" } },
+    { 1, false, "MoreMonsters", 2, 0, false, { "SmallOff", "SmallOn" } },
+    { 1, false, "ClassLootBias", 2, 0, false, { "SmallOff", "SmallOn" } },
+    { 1, false, "LootFilter", 2, 0, false, { "SmallOff", "SmallOn" } },
+    { 0, false, "SPrevious", 0, 0, false, {} },
+};
 constexpr Menu kMenus[] = {
-    { 50, 39, 51, 0, kMain }, { 50, 39, 51, 0, kOptions }, { 45, 34, 49, 36, kSound },
-    { 45, 34, 49, 36, kVideo }, { 45, 34, 49, 36, kAutomap },
+    { 60, 60, 0, kMain }, { 60, 60, 0, kOptions }, { 60, 60, 45, kSound },
+    { 60, 60, 45, kVideo }, { 60, 60, 45, kAutomap }, { 60, 60, 45, kChallenge },
 };
 
 const d2d::palette::Palette& palette(const Scene& scene) { return scene.act_pal.entries().empty() ? scene.pal : scene.act_pal; }
@@ -130,15 +135,39 @@ void cels(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d:
     for (int i = 0; i < frames; ++i) cel(framebuffer, scene, sprite, i, x + 0x100 * i, bottom, half);
 }
 
-// Rows added by this port have no label art: their name, in the menu font.
+// Text-only labels keep original and TrimUI-added pause-menu rows consistent.
 std::string_view fallback_text(std::string_view name, std::string_view lang) {
-    if (name == "GameSpeed") return lang == "ESP" ? "Velocidad" : "Game Speed";
+    static constexpr std::array<std::array<std::string_view, 3>, 41> kLabels{{
+        { "Options", "Options", "Opciones" }, { "Save", "Save", "Guardar" }, { "Exit", "Save and Exit", "Salir y guardar" },
+        { "ReturnToGame", "Return to Game", "Volver al juego" }, { "SoundOptions", "Sound Options", "Opciones de sonido" },
+        { "VideoOptions", "Video Options", "Opciones de video" }, { "AutoMapOptions", "Automap Options", "Opciones del automapa" },
+        { "ChallengeOptions", "Optional Challenge", "Reto opcional" }, { "CfgOptions", "Configure Controls", "Configurar controles" },
+        { "Previous", "Previous", "Anterior" }, { "SPrevious", "Previous", "Anterior" }, { "Sound", "Sound", "Sonido" },
+        { "Music", "Music", "Musica" }, { "3DSound", "3D Sound", "Sonido 3D" }, { "EAX", "EAX", "EAX" },
+        { "3DBias", "3D Bias", "Balance 3D" }, { "NPCSpeech", "NPC Speech", "Dialogo NPC" },
+        { "Resolution", "Resolution", "Resolucion" }, { "LightQuality", "Light Quality", "Calidad de luz" },
+        { "BlendShadow", "Blend Shadows", "Sombras suaves" }, { "Perspective", "Perspective", "Perspectiva" },
+        { "Gamma", "Gamma", "Gamma" }, { "Contrast", "Contrast", "Contraste" }, { "GameSpeed", "Game Speed", "Velocidad" },
+        { "AutoMapMode", "Automap Mode", "Modo automapa" }, { "AutoMapFade", "Automap Fade", "Transp. automapa" },
+        { "AutoMapCenter", "Center Automap", "Centrar automapa" }, { "AutoMapParty", "Party on Automap", "Grupo en automapa" },
+        { "AutoMapPartyNames", "Party Names", "Nombres del grupo" }, { "HarderMonsters", "Harder Monsters", "Enemigos mas fuertes" },
+        { "MoreMonsters", "More Monsters", "Mas monstruos" },
+        { "ClassLootBias", "Class-Usable Loot", "Botin para mi clase" }, { "LootFilter", "Hide Gold/Potions", "Ocultar oro/pociones" },
+        { "SmallOff", "Off", "No" }, { "SmallOn", "On", "Si" }, { "AudioOnly", "Audio Only", "Solo audio" },
+        { "TextOnly", "Text Only", "Solo texto" }, { "AudioText", "Audio + Text", "Audio + texto" },
+        { "Low", "Low", "Baja" }, { "Medium", "Medium", "Media" }, { "High", "High", "Alta" }
+    }};
+    const std::size_t language = lang == "ESP" ? 2 : 1;
+    for (const auto& label : kLabels) if (label[0] == name) return label[language];
+    if (name == "SmallNo") return lang == "ESP" ? "No" : "No";
+    if (name == "SmallYes") return lang == "ESP" ? "Si" : "Yes";
+    if (name == "Everything") return lang == "ESP" ? "Todo" : "Everything";
+    if (name == "Center") return lang == "ESP" ? "Centro" : "Center";
+    if (name == "Auto") return "Auto";
+    if (name == "Full") return lang == "ESP" ? "Completo" : "Full";
+    if (name == "Mini") return lang == "ESP" ? "Mini" : "Mini";
+    if (name == "640x480" || name == "800x600") return name;
     return {};
-}
-
-const d2d::dc6::Sprite* text_image(const Scene& scene, std::string_view name) {
-    const auto found = scene.menu_text.find(std::string(name));
-    return found != scene.menu_text.end() ? &found->second : nullptr;
 }
 
 // A black rect (FUN_0046efd0 -> FUN_004f6300) at draw mode 0 / 1 / 2:
@@ -175,7 +204,7 @@ GameMenu::GameMenu() {
 
 void GameMenu::show(int which) {
     menu = which;
-    sel = which == 0 ? 1 : int(rows().size()) - 1;   // main menu: the TrimUI "Save" row
+    sel = which == 0 ? 1 : which == kChallengeMenu ? 1 : int(rows().size()) - 1;   // main: Save; challenge: first option
     held = drag = false;
     just_shown = true;
 }
@@ -189,7 +218,7 @@ std::vector<int> GameMenu::rows() const {
 
 int GameMenu::top() const {
     const int count = int(rows().size());
-    return (kHeight - 80) / 2 - kMenus[menu].step * count / 2;
+    return kHeight / 2 - kMenus[menu].step * count / 2;
 }
 
 int GameMenu::step() const { return kMenus[menu].step; }
@@ -203,7 +232,7 @@ bool GameMenu::enabled(int row) const {
 int GameMenu::hit(int mouse_y) const {
     const auto shown = rows();
     const int count = int(shown.size()), step = kMenus[menu].step;
-    const int mid = (kHeight - 80) / 2, half = step * count / 2;
+    const int mid = kHeight / 2, half = step * count / 2;
     if (mouse_y <= mid - half || mouse_y >= mid + half) return -1;
     int found = -1;
     for (int k = 0; k < count; ++k)
@@ -216,6 +245,7 @@ int GameMenu::hit(int mouse_y) const {
 
 void GameMenu::changed(Audio& audio, int row) {
     const auto name = kMenus[menu].rows[std::size_t(row)].name;
+    if (menu == kChallengeMenu) { challenge_changed = true; return; }
     // 47cda0 / 47cdf0: "Master Volume" / "Music Volume" = value * 100 / 20
     if (name == "Sound") audio.master_volume = value[std::size_t(menu)][std::size_t(row)] * 100 / 20;
     else if (name == "Music") audio.music_volume = value[std::size_t(menu)][std::size_t(row)] * 100 / 20;
@@ -270,6 +300,7 @@ GameMenu::Action GameMenu::activate(const Scene& scene, Audio& audio) {
         show(3);
     }
     else if (row.name == "AutoMapOptions") show(4);
+    else if (row.name == "ChallengeOptions") show(kChallengeMenu);
     else if (row.name == "CfgOptions") action = kControls;    // 0x47f400: UI 0xb
     else if (row.name == "Previous") show(0);                 // 0x47f430
     else if (row.name == "SPrevious") show(1);                // 0x47f460
@@ -284,7 +315,7 @@ void GameMenu::slide(const Scene& scene, Audio& audio, int mouse_x, int mouse_y)
     auto& val = value[std::size_t(menu)][std::size_t(row_index)];
     const int old = val;
     if (enabled(row_index) && row.type == 2) {
-        const bool labelled = text_image(scene, row.name) != nullptr;
+        const bool labelled = !fallback_text(row.name, scene.lang).empty();
         const int strip = kWidth / 2 + (labelled ? -0x3b : -0x90), base = kWidth / 2 + (labelled ? -0x3c : -0x91) + 12;
         if (drag || (mouse_x > strip && mouse_x < strip + 0x121)) {
             if (mouse_x < base) val = 0;
@@ -348,27 +379,30 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
     for (std::size_t k = 0; k < shown.size(); ++k) {
         const int row_index = shown[k];
         const auto& row = def.rows[std::size_t(row_index)];
-        const int y = first + def.step * int(k), text_y = y + def.text_dy;
+        const int y = first + def.step * int(k);
         const bool half = !enabled(row_index);              // draw mode 1, else 5
-        const auto* label = text_image(scene, row.name);
-        const std::string_view fallback = label ? std::string_view{} : fallback_text(row.name, scene.lang);
-        const bool labelled = label || !fallback.empty();
+        const std::string_view label = fallback_text(row.name, scene.lang);
+        const bool labelled = !label.empty();
         const auto& text_font = scene.font30.line_height() > 0 ? scene.font30 : scene.font;
+        const int text_top = y + (def.step - text_font.line_height() * kMenuTextScale) / 2;
         const auto draw_fallback = [&](int x, bool centred) {
-            const std::string text(fallback);
-            const int left = centred ? x - text_font.measure(text) / 2 : x;
-            text_font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene), left, text_y - text_font.line_height(), text, 199, 179, 119);
+            const std::string text(label);
+            const int width = text_font.measure(text) * kMenuTextScale;
+            const int left = centred ? x - width / 2 : x;
+            text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                         left, text_top, text, 199, 179, 119, kMenuTextScale);
         };
         if (row.type <= 0) {
-            if (label) cels(framebuffer, scene, *label, kWidth / 2, text_y, 1, half);
-            else if (!fallback.empty()) draw_fallback(kWidth / 2, true);
+            if (labelled) draw_fallback(kWidth / 2, true);
         } else if (row.type == 1) {
-            if (label) cels(framebuffer, scene, *label, kWidth / 2 - 230, text_y, 0, half);
-            if (const auto* choice = text_image(scene, row.choices[std::size_t(value[std::size_t(menu)][std::size_t(row_index)])]))
-                cels(framebuffer, scene, *choice, kWidth / 2 + 230, text_y, 2, half);
+            if (labelled) draw_fallback(kMenuTextMargin, false);
+            const auto choice_name = row.choices[std::size_t(value[std::size_t(menu)][std::size_t(row_index)])];
+            const auto choice_text = fallback_text(choice_name, scene.lang);
+            if (!choice_text.empty()) text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                                                   kWidth - kMenuTextMargin - text_font.measure(std::string(choice_text)) * kMenuTextScale,
+                                                                   text_top, choice_text, 199, 179, 119, kMenuTextScale);
         } else {
-            if (label) cels(framebuffer, scene, *label, kWidth / 2 - 230, text_y, 0, half);
-            else if (!fallback.empty()) draw_fallback(kWidth / 2 - 230, false);
+            if (labelled) draw_fallback(kMenuTextMargin, false);
             // FUN_0047e260: the strip darkened either side of the knob, the
             // bar, the skull.
             const int val = value[std::size_t(menu)][std::size_t(row_index)];
@@ -384,7 +418,8 @@ void GameMenu::draw(std::vector<std::uint8_t>& framebuffer, const Scene& scene) 
                 char speed[8];
                 const int tenths = 5 + val;   // 0.5x .. 1.5x
                 std::snprintf(speed, sizeof speed, "%d.%dx", tenths / 10, tenths % 10);
-                text_font.draw_tinted(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene), kWidth / 2 + 0xe6 + 12, text_y - text_font.line_height(), speed, 199, 179, 119);
+                text_font.draw_tinted_scaled(framebuffer, std::uint32_t(fb_width(framebuffer)), kScreenHeight, palette(scene),
+                                             kWidth / 2 + 0xe6 + 12, text_top, speed, 199, 179, 119, kMenuTextScale);
             }
         }
     }

@@ -331,6 +331,7 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
             d2d::log::info("the Dark Wanderer's afterglow: {}", std::ranges::count(fires, &game_data->afterglow, &Fire::npc));
         }
         std::erase_if(fires, [&](const Fire& fire) { return fire.gone && now_ms >= fire.gone; });
+        std::erase_if(fight.corpse_blast_fires, [&](const Fight::GroundFire& fire) { return now_ms >= fire.gone; });
         if (level != wanted_near) { want_nearby(*game_data, *level); wanted_near = level; }
         each_player([&](Player&) { item_ids(); });
         // This tick's day frames (tick): the day and the quests' timers step
