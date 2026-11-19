@@ -828,7 +828,19 @@ int main() try {
                     { 359, 56, 0, 3, 0, 20, 1193839240u, 3146637366u, 79, 10, { 38, 49, 0, 0, 0, 0 }, { 60, 30, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 7, 7, 0, 0, 0, 0 }, { 9, 12, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, -1, 0, { 0, 0 }, AttackKind::stand, -1, 0, 0, 15533903u, 1399659081u },
                     { 359, 21, 0, 3, 1, 20, 1330804564u, 2236366800u, 79, 10, { 38, 49, 0, 0, 0, 0 }, { 60, 30, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 7, 7, 0, 0, 0, 0 }, { 0, 25, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, -1, 0, { 0, 0 }, AttackKind::swing, -1, 0, 0, 1761635358u, 1037823986u },
                     { 338, 33, 1, 1, 1, 0, 934367838u, 2555213081u, 75, 30, { 10, 99, 0, 0, 0, 0 }, { 104, 10, 0, 0, 0, 0 }, { 4, 0, 0, 0, 0, 0 }, { 14, 1, 0, 0, 0, 0 }, { 24, 6, 0, 0, 0, 0 }, { 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, 10, 14, {  }, AttackKind::aura, 99, 0, 0, 708982570u, 1475047410u },
-                    { 338, 54, 1, 5, 0, 0, 2503952625u, 4070378921u, 75, 30, { 10, 104, 0, 0, 0, 0 }, { 104, 10, 0, 0, 0, 0 }, { 4, 0, 0, 0, 0, 0 }, { 14, 1, 0, 0, 0, 0 }, { 18, 27, 0, 0, 0, 0 }, { 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, 10, 14, { 0 }, AttackKind::failed, -1, 0, 0, 2579349278u, 1044379533u },
+                    // code-puppy-b7f801, 2026-11-19: this row's expected outcome
+                    // (kind, skill, growth, seed state after) no longer matches
+                    // game.exe's own trace on purpose -- see the comment on
+                    // merc_attack's `view.gap > 2 || !view.melee` branch in
+                    // components/rules/merc.hpp. Original game.exe answer here
+                    // was Kind::failed (a merc frozen next to a monster it can't
+                    // path any closer to, confirmed and intentionally no longer
+                    // reproduced); this port now falls through to the normal
+                    // skill pick instead, which for this exact seed/row lands on
+                    // this merc's own skill 10 in mode 14 (recaptured by running
+                    // the fixed merc_attack, not independently re-traced against
+                    // game.exe, since this case is deliberately not matching it).
+                    { 338, 54, 1, 5, 0, 0, 2503952625u, 4070378921u, 75, 30, { 10, 104, 0, 0, 0, 0 }, { 104, 10, 0, 0, 0, 0 }, { 4, 0, 0, 0, 0, 0 }, { 14, 1, 0, 0, 0, 0 }, { 18, 27, 0, 0, 0, 0 }, { 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, 10, 14, { 0 }, AttackKind::skill, 10, 14, 0, 2247682467u, 1075826901u },
                     { 338, 71, 1, 0, 1, 0, 2779566913u, 1803954443u, 43, 30, { 10, 104, 0, 0, 0, 0 }, { 104, 10, 0, 0, 0, 0 }, { 4, 0, 0, 0, 0, 0 }, { 14, 1, 0, 0, 0, 0 }, { 14, 10, 0, 0, 0, 0 }, { 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, 10, 14, {  }, AttackKind::aura, 104, 0, 0, 3887533861u, 774095468u },
                 };
                 for (const auto& entry : attack_cases) {

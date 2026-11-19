@@ -246,7 +246,10 @@ MercAttack merc_attack(const MercFightView& view, int& chance_growth, int x, int
     const int chance = melee_class ? 0x62 : std::min(chance_growth + 0x28 + 2 * view.level, 0x5f);
     const bool use = int(seed.next() % 100) < chance;
     chance_growth = use ? 0 : chance_growth + 10;
-    auto pick = [&]() -> MercAttack {
+    // `melee_ok` defaults to `view.melee`, the real size-aware check; a
+    // caller can pass `true` instead once it already knows the merc can't
+    // physically get any closer (see the gap-and-move branch below).
+    auto pick = [&](bool melee_ok) -> MercAttack {
         if (!view.row) return { .kind = Kind::stand, .frames = 0 };
         const int gained = std::max(view.level - view.row->level, 0);
         int total = view.row->default_chance;
@@ -267,7 +270,7 @@ MercAttack merc_attack(const MercFightView& view, int& chance_growth, int x, int
                 return { .kind = Kind::skill, .skill = view.ids[k], .mode = view.row->skills[k].mode };
             }
         if (view.cls == 0x10f) return { .kind = Kind::skill, .skill = view.skill1, .mode = view.sk1mode };
-        if ((view.cls == 0x152 || view.cls == 0x167 || view.cls == 0x230 || view.cls == 0x231) && view.melee) return { .kind = Kind::swing };
+        if ((view.cls == 0x152 || view.cls == 0x167 || view.cls == 0x230 || view.cls == 0x231) && melee_ok) return { .kind = Kind::swing };
         return { .kind = Kind::stand };
     };
     if (view.aip1 == 0) {
@@ -280,12 +283,40 @@ MercAttack merc_attack(const MercFightView& view, int& chance_growth, int x, int
             if (move(0, foe_x + off_x, foe_y + off_y)) return { .kind = Kind::moved };
             const int away_x = x < foe_x ? -1 : foe_x < x ? 1 : 0, away_y = y < foe_y ? -1 : foe_y < y ? 1 : 0;
             if (move(1, x + 4 * away_x, y + 4 * away_y)) return { .kind = Kind::moved };
-            return pick();
+            return pick(view.melee);
         }
-        return use ? pick() : MercAttack{ .kind = Kind::stand };
+        return use ? pick(view.melee) : MercAttack{ .kind = Kind::stand };
     }
-    if (view.gap > 2 || !view.melee) return { .kind = move(2, foe_x, foe_y) ? Kind::moved : Kind::failed };
-    return use ? pick() : MercAttack{ .kind = Kind::stand };
+    if (view.gap > 2 || !view.melee) {
+        if (move(2, foe_x, foe_y)) return { .kind = Kind::moved };
+        // code-puppy-b7f801, 2026-11-19, deliberate deviation from game.exe,
+        // asked for explicitly by the project owner over keeping strict
+        // fidelity here: the "run closer" path can come back empty for a
+        // monster bigger than 1 subtile, because toward_path's own
+        // close-enough check assumes a size-1 unit (see its comment), while
+        // `gap`/`melee` here are the real, size-aware distance. For a monster
+        // whose footprint is bigger than that assumption, there's then
+        // nowhere closer the pathfinder will ever send the merc -- every next
+        // think recomputes the exact same inputs and fails exactly the same
+        // way, forever. In real game.exe this is a known, confirmed, faithful
+        // limitation (tests/monsters/test_monster_ai.cpp's merc attack_cases
+        // pin a case just like this to Kind::failed, verified against
+        // game.exe's own RNG trace) -- a hired merc can genuinely just stand
+        // next to a monster it can't quite path up to and do nothing. This
+        // port intentionally no longer matches that: since the pathfinder
+        // saying "no closer spot exists" already means the merc is standing
+        // right at the monster's side, treat that as close enough to try
+        // fighting instead of spinning on Kind::failed forever. The actual
+        // hit, in Fight::merc_turn, still separately checks a real distance
+        // before it lands, so this can only turn a frozen merc into one that
+        // swings and sometimes misses, never an unfair hit from genuinely out
+        // of range. Passing `true` (not `view.melee`, which is what got us
+        // into this branch and may still read false) is the whole point:
+        // `view.melee` would otherwise gate `pick`'s own swing check right
+        // back into Kind::stand, right back to the same deadlock next think.
+        return use ? pick(true) : MercAttack{ .kind = Kind::stand };
+    }
+    return use ? pick(view.melee) : MercAttack{ .kind = Kind::stand };
 }
 
 // What a merc can wear (FUN_0048b290, the server's FUN_0054d230): an
