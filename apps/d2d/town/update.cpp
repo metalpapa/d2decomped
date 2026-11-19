@@ -403,7 +403,7 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                 const auto& challenge = game_menu.value[GameMenu::kChallengeMenu];
                 world.fight.set_challenge_monsters(challenge[GameMenu::kHardMonstersRow] != 0);
                 world.fight.set_more_monsters(challenge[GameMenu::kMoreMonstersRow] != 0);
-                world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? 50 : 0;
+                world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? d2d::game::Loot::kClassLootBias : 0;
                 if (!cfg_file.empty() && !d2d::userdir::save_cfg(cfg_file, {
                         { "challenge_monsters", challenge[GameMenu::kHardMonstersRow] ? "1" : "0" },
                         { "challenge_more_monsters", challenge[GameMenu::kMoreMonstersRow] ? "1" : "0" },

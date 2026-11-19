@@ -40,6 +40,7 @@ struct Loot {
     Cues& cues;
     Character* character = nullptr;        // the acting player's (World::act_as)
     UnitState* player = nullptr;
+    static constexpr int kClassLootBias = 75;
     int class_loot_bias = 0;                // extra base-item weight for class-usable gear from elite monsters
     // Who stands on this level (the Crowd). Their 0x1000 / 0x2000 are not
     // in Level::walk. Null: no unit footprints (a level the player isn't on).

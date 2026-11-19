@@ -823,7 +823,7 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
         challenge[GameMenu::kLootFilterRow] = cfg["loot_filter"] == "1";
         town.world.fight.set_challenge_monsters(challenge[GameMenu::kHardMonstersRow] != 0);
         town.world.fight.set_more_monsters(challenge[GameMenu::kMoreMonstersRow] != 0);
-        town.world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? 50 : 0;
+        town.world.loot.class_loot_bias = challenge[GameMenu::kClassLootRow] ? d2d::game::Loot::kClassLootBias : 0;
     }
     if (g_click_keys) town.click_keys = g_click_bindings;
     if (!g_no_save) town.key_dir = save_dir;                 // <name>.key and default.key beside the saves, as game.exe keeps them
