@@ -441,9 +441,20 @@ auto World::tick_level(std::span<const Order> orders, std::uint32_t now_ms, std:
             for (const auto& order : orders) if (order.player == player.id) cmds.push_back(order.command);
             // A skill command this tick means the button is still down, left or
             // right. A spell was ignored here, so a held cast stopped after one.
-            const bool button = std::ranges::any_of(cmds, [](const Command& command) {
-                return std::holds_alternative<cmd::Move>(command) || std::holds_alternative<cmd::UseSkill>(command);
-            });
+            // Not `cmd::Move` too (code-puppy-b7f801, 2026-11-19, TrimUI pad bug
+            // report: holding B then moving left the cast repeating forever while
+            // only the movement stick was held, B long released). `cmd::Move` used
+            // to count as "the button's still down" because on the original mouse
+            // input a held left-click both walks (empty ground) and attacks
+            // (a monster under the cursor) through the very same physical button,
+            // so a Move command genuinely meant that button hadn't been released --
+            // true for mouse and this port's touch input too (see town/touch.cpp),
+            // just not for a gamepad: its movement stick is a separate physical
+            // input from the A/B skill buttons, so a pad player walking (sending
+            // Move every tick) was never "still holding" whichever face button
+            // last fired a skill. `button` only needs an actual repeated
+            // `cmd::UseSkill` to mean a held cast/attack continues past this swing.
+            const bool button = std::ranges::any_of(cmds, [](const Command& command) { return std::holds_alternative<cmd::UseSkill>(command); });
             const bool resurrect = std::ranges::any_of(cmds, [](const Command& command) { return std::holds_alternative<cmd::Resurrect>(command); });
             // Back in camp after dying: alone, or in co-op once no one's left alive. A dead
             // hardcore character leaves the game instead (FUN_0054c0e0: flag 4 at 0054c12c,
