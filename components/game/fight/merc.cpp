@@ -351,6 +351,35 @@ auto Fight::merc_turn(std::uint32_t now_ms, float /* elapsed: a turn is a frame 
         const int chosen = d2d::rules::sight_choice(sight_foes, d2d::rules::search_sight(sight_foes), path_to_primary, target_gap);
         actor->merc_target = chosen >= 0 ? sight_index[std::size_t(chosen)] : -1;
         if (actor->merc_target < 0) target_gap = -1;
+        // code-puppy-b7f801, 2026-11-19: diagnostic for a user report of an
+        // Act 2 (spear) merc standing next to a monster, doing nothing, while
+        // it's hit. Throttled (static, so shared across local co-op players;
+        // fine for a diagnostic): if no target got picked at all, but an
+        // alive hostile monster is right next to the merc, that's exactly
+        // this bug happening -- log once every couple of seconds with enough
+        // to see which stage dropped it (room linkage vs sight_blocked vs
+        // sight_choice's own gating). Remove once the real cause is pinned
+        // down and fixed (see PLAN-MEJORAS.md).
+        if (actor->merc_target < 0 && !town) {
+            static std::uint32_t next_merc_target_log = 0;
+            float nearest = 1e9f;
+            bool nearest_in_sight_foes = false, nearest_blocked = false;
+            for (std::size_t i = 0; i < monsters.size(); ++i) {
+                const auto& monster = monsters[i];
+                if (!monster.alive() || !monster.targetable() || d2d::rules::friends(2, monster.align)) continue;
+                const float distance = std::hypot(monster.unit.x - unit.x, monster.unit.y - unit.y);
+                if (distance >= nearest) continue;
+                nearest = distance;
+                const auto found = std::ranges::find(sight_index, int(i));
+                nearest_in_sight_foes = found != sight_index.end();
+                nearest_blocked = nearest_in_sight_foes && sight_foes[std::size_t(found - sight_index.begin())].blocked;
+            }
+            if (nearest < 2.f && now_ms >= next_merc_target_log) {
+                next_merc_target_log = now_ms + 2000u;
+                d2d::log::warn("merc idle next to a foe {:.2f} cells off (in its room list: {}, marked blocked: {}, {} sight_foes this think)",
+                    nearest, nearest_in_sight_foes, nearest_blocked, sight_foes.size());
+            }
+        }
         // State 0x3c is decrepify: a monster's curse on the merc (actor->curses[1]).
         const auto* curse = game_data->skills.get(actor->curses[1].skill);
         const bool slowed = curse && now_ms < actor->curses[1].until && curse->auratarget == "decrepify";
