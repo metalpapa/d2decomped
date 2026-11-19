@@ -1384,11 +1384,46 @@ std::vector<int> walk_links(const GameData& game_data, int id) {
     return out;
 }
 
+// Diagnostic only (code-puppy-b7f801, 2026-11-19): see PLAN-MEJORAS.md P0d --
+// a 2026-11-18 device session showed RSS climbing 341->756 MB over ~100 min
+// with zero "memory low"/"art back" releases ever firing, meaning whatever's
+// actually growing almost certainly isn't the DT1 tile-pixel cache that path
+// already manages. GameData::levels is never unloaded once built (P3's own
+// open question), so this estimates each Level's *other* heap state (walk
+// grid, picks/drawn, room tiles, patches, npcs, nearby links, tile lookup --
+// everything except the DT1 archives themselves, already tracked elsewhere)
+// to test that hypothesis against real RSS numbers in the next session's log.
+// Approximate on purpose (skips allocator/hash-bucket overhead precision) --
+// good enough to compare levels against each other and against `sys: rss=`
+// over time, not meant to be exact or kept forever once the leak is found.
+std::size_t approx_level_bytes(const Level& level) {
+    std::size_t bytes = sizeof(Level);
+    bytes += level.dt1_paths.capacity() * sizeof(std::string);
+    for (const auto& path : level.dt1_paths) bytes += path.capacity();
+    bytes += level.tile_lookup.size() * (sizeof(std::uint64_t) + sizeof(const d2d::dt1::Tile*) + 32);   // rough bucket overhead
+    const auto picks_bytes = [](const std::vector<std::vector<Level::Pick>>& rows) {
+        std::size_t total = rows.capacity() * sizeof(std::vector<Level::Pick>);
+        for (const auto& row : rows) total += row.capacity() * sizeof(Level::Pick);
+        return total;
+    };
+    bytes += picks_bytes(level.picks);
+    bytes += picks_bytes(level.drawn);
+    bytes += level.drawn_laid.capacity() * sizeof(std::size_t);
+    bytes += level.room_tiles.capacity() * sizeof(decltype(level.room_tiles)::value_type);
+    for (const auto& sides : level.room_tiles) for (const auto& side : sides) bytes += side.capacity() * sizeof(Level::RoomTile);
+    bytes += level.patches.capacity() * sizeof(Level::Patch);
+    bytes += level.walk.capacity() * sizeof(std::uint16_t);
+    bytes += level.npcs.capacity() * sizeof(Npc);
+    bytes += level.nearby.capacity() * sizeof(Level::Near);
+    return bytes;
+}
+
 // A finished build into GameData::levels (nullptr: tried, not built); an act
 // level is linked with the act levels already there, both ways, and with the
 // levels it walks into.
 void install_level(const GameData& game_data, int id, std::unique_ptr<Level> level) {
     auto in_act = [&](int level_id) { return std::ranges::contains(game_data.layout_of(id), level_id, &d2d::drlg::Placed::level); };
+    const std::size_t own_bytes = level ? approx_level_bytes(*level) : 0;   // diagnostic only, see above
     if (level) {
         const auto walks = walk_links(game_data, id);
         auto linked = [&](int level_id) { return (in_act(id) && in_act(level_id)) || std::ranges::contains(walks, level_id); };
@@ -1401,6 +1436,12 @@ void install_level(const GameData& game_data, int id, std::unique_ptr<Level> lev
         }
     }
     game_data.levels[id] = std::move(level);
+    if (own_bytes) {   // diagnostic only, see approx_level_bytes above
+        std::size_t total = own_bytes;
+        for (const auto& [other_id, built] : game_data.levels) if (built && other_id != id) total += approx_level_bytes(*built);
+        d2d::log::info("level {}: installed, approx {} KB own non-pixel state, {} levels resident, approx {} MB total",
+                       id, own_bytes >> 10, game_data.levels.size(), total >> 20);
+    }
 }
 
 std::unique_ptr<Level> finish_job(std::future<std::unique_ptr<Level>>& job, int id) {
@@ -1455,6 +1496,19 @@ void GameData::manage_art(std::span<const Level* const> active) const {
     const auto now = std::chrono::steady_clock::now();
     const bool check = now - last >= std::chrono::seconds(1);
     if (check) { last = now; kb = available_kb(); }
+    // Diagnostic only (code-puppy-b7f801, 2026-11-19): see approx_level_bytes
+    // above/PLAN-MEJORAS.md P0d. Runs regardless of whether any DT1 art gets
+    // released below, so a session's log can tell apart "RSS grows because
+    // never-unloaded Level state grows with it" (this total should climb in
+    // step) from "RSS grows for some other reason" (this total stays flat
+    // while RSS/falling memavail keeps climbing in the existing `sys:` line).
+    static auto last_levels_report = std::chrono::steady_clock::now() - std::chrono::seconds(30);
+    if (check && now - last_levels_report >= std::chrono::seconds(30)) {
+        last_levels_report = now;
+        std::size_t total = 0;
+        for (const auto& [_, built] : levels) if (built) total += approx_level_bytes(*built);
+        d2d::log::info("levels resident: {} (+town), approx {} MB non-pixel state", levels.size(), total >> 20);
+    }
     // `budget` tilesets at most (-1: all); returns how many it restored.
     const auto ensure = [&](const Level* level, int budget) {
         if (!level) return 0;
