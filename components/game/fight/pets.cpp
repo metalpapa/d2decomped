@@ -285,7 +285,11 @@ auto Fight::pets_turn(std::uint32_t now_ms, float elapsed, const Crowd& crowd) -
                 pet.cast = -1;
                 set_mode(*game_data, monster, "NU", now_ms);
             }
-            if (monster.mode == "GH" && now_ms < monster.mode_until) continue;
+            if (monster.mode == "GH") {
+                if (now_ms < monster.mode_until) continue;
+                set_mode(*game_data, monster, "NU", now_ms);
+                monster.next_act = now_ms;
+            }
             if (ai_name == "NecroPet") { necropet_turn(pet, now_ms, elapsed, crowd); continue; }
             if (traced) { pet_think_turn(pet, now_ms, elapsed, crowd); continue; }
             // Only a revived monster gets here (Revive, do 58). game.exe raises
@@ -349,6 +353,7 @@ auto Fight::pet_walking(Pet& pet, std::uint32_t now_ms, float /* elapsed: a turn
         auto& monster = pet.monster;
         auto& unit = monster.unit;
         const auto& type_info = game_data->monsters.types[std::size_t(monster.type)];
+        if (now_ms >= pet.blocked_target_until) pet.blocked_target_id = -1;
         if (pet.target >= 0 && !monsters[std::size_t(pet.target)].alive()) { pet.target = -1; pet.chase = false; }
         // A walk at its foe ends in melee as its think tests it (FUN_00622c40:
         // the units' distance within MonStats2 MeleeRng + 1).
@@ -378,6 +383,14 @@ auto Fight::pet_walking(Pet& pet, std::uint32_t now_ms, float /* elapsed: a turn
                 const int sum = 100 + run_pct + monster.move_pct + pet.speed_pct + pet_buff_stat(pet, d2d::d2s::kVelocityPercent);   // Burst of Speed's on a Shadow
                 const UnitState* walk_at = pet.to_owner ? &actor->player : pet.chase ? &monsters[std::size_t(pet.target)].unit : nullptr;
                 if (walk_on(*level, unit, path_velocity(velocity, std::max(sum, 25)), crowd, walk_at)) return true;
+                // A false walk_on also means an ordinary finished route, not only a
+                // blocked step (code-puppy-b7f801, 2026-11-18, per Copilot's review
+                // above): only blacklist the target if the final step didn't
+                // actually land the pet in melee range of it.
+                if (pet.chase && pet.target >= 0 && std::size_t(pet.target) < monsters.size() && !in_melee(monsters[std::size_t(pet.target)])) {
+                    pet.blocked_target_id = monsters[std::size_t(pet.target)].id;
+                    pet.blocked_target_until = now_ms + 2000;
+                }
                 unit.walking = false;
                 unit.path.clear();
             }
@@ -447,6 +460,7 @@ auto Fight::necropet_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const C
         if (master_ai)
             for (const auto& [room_level, near_room] : near_rooms(*game_data, *level, unit.x, unit.y))
                 if (room_level == level) rooms.push_back(near_room);
+        const int avoided_target = now_ms < pet.blocked_target_until ? pet.blocked_target_id : -1;
         for (const auto& other : monsters) {
             const auto& other_type = game_data->monsters.types[std::size_t(other.type)];
             const int foe_x = sub(other.unit.x), foe_y = sub(other.unit.y);
@@ -454,6 +468,7 @@ auto Fight::necropet_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const C
                                                                   false, true, !other.targetable(), town });   // FUN_005dca70: no unit flag 0x4, no target
             entry.blocked = need_sight && entry.distance <= 0x23 && d2d::rules::sight_blocked(foe_x, foe_y, other_type.size, pet_x, pet_y, size, wall);
             if (master_ai && !std::ranges::contains(rooms, room_of(*level, other.unit.x, other.unit.y))) entry.skip = true;
+            if (other.id == avoided_target) entry.skip = true;
         }
         const auto pick = d2d::rules::search_near(nears, 2, need_sight);
         const int found = pick.target >= 0 ? pick.target : pick.second;
@@ -496,6 +511,15 @@ auto Fight::necropet_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const C
         using Kind = d2d::rules::PetAct::Kind;
         const auto act = d2d::rules::necropet_think(view, monster.seed, area_at, try_move);
         monster.force_sight = act.unreachable;
+        // An unreachable chase attempt never reaches pet_walking's own blacklist
+        // (pet.chase/pet.target are only set below, for act.kind == chase) --
+        // without this, a target search_near keeps re-picking stays unreachable
+        // forever and the pet just stands/wanders in place (code-puppy-b7f801,
+        // 2026-11-18, per Copilot's "initial path failure" review above).
+        if (act.unreachable && found >= 0) {
+            pet.blocked_target_id = monsters[std::size_t(found)].id;
+            pet.blocked_target_until = now_ms + 2000;
+        }
         const int aidel = type_info.diff[std::size_t(difficulty)].aidel > 0 ? type_info.diff[std::size_t(difficulty)].aidel : 15;
         if (act.kind == Kind::moved || act.kind == Kind::chase) {
             set_mode(*game_data, monster, act.move.mode == d2d::rules::kMonsterRun ? "RN" : "WL", now_ms);

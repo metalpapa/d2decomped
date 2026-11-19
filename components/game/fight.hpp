@@ -293,6 +293,8 @@ struct Fight {
         struct SelfState { int skill = 0, level = 0; std::uint32_t until = 0; };
         struct Pet {
             Monster monster; int skill = 0; int target = -1; int shot_skill = -1, shot_level = 0, shots = 0;
+            int blocked_target_id = -1;
+            std::uint32_t blocked_target_until = 0;
             // Its sumskills d2d uses (FUN_0056deb0 at their sumsk calcs): a
             // missile it shoots (the skeletal mage's, the hydra's), an aura it
             // runs (Fire Golem's Holy Fire, the totems').
