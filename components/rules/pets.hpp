@@ -237,6 +237,22 @@ PetAct necropet_think(const PetView& view, Rng& seed, AreaAt&& area_at, TryMove&
         brain.pace(0, 0, 0xc);
         brain.pace(0xd, 0, 0);
         if (brain.set_out(view.foe_x, view.foe_y, kMonsterWalk, PetUnit::foe)) return brain.act;
+        // code-puppy-b7f801, 2026-11-19, deliberate deviation from game.exe,
+        // same reasoning and same explicit ask as merc_attack's matching fix
+        // (components/rules/merc.hpp): the pathfinder behind set_out stops
+        // "close enough" using a size-1 assumption (see toward_path's own
+        // comment), while `view.foe_melee` above is the real, size-aware
+        // check. For a foe bigger than that assumption, set_out can keep
+        // failing at the exact same spot forever -- a pet (any necropet:
+        // skeleton, mage, golem, valkyrie) standing right next to a monster
+        // that's hitting it, doing nothing, cycling the 2-second blocked-
+        // target cooldown instead of fighting. If the pet is already
+        // essentially touching the foe (merc_gap, not the size-1 pathing
+        // check), swing anyway rather than wandering or standing -- the
+        // actual hit still separately checks a real distance before landing
+        // (Fight::pets_turn's own in_melee/attack_range), so this can only
+        // turn a stuck pet into one that swings and sometimes misses.
+        if (merc_gap(pet_x, pet_y, view.size, view.foe_x, view.foe_y) <= 2) return { .kind = Kind::swing, .unit = PetUnit::foe };
         if (seed.next() % 100 < 0x46) brain.wander(pet_x, pet_y, 4);
         else brain.stand(10);
         brain.act.unreachable = true;
