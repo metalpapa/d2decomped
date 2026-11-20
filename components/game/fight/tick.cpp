@@ -92,6 +92,23 @@ auto Fight::skill_status(int skill, std::uint32_t now_ms) -> int {
 auto Fight::ask(int skill, std::uint32_t now_ms) -> int {
         int status = skill_status(skill, now_ms);
         if (const auto* row = game_data->skills.get(skill); row && row->attack_no_mana && (status == 1 || status == 2 || status == 4)) {
+            // code-puppy-b7f801, 2026-11-20: device report of B (bound to the
+            // right-hand skill) sometimes swinging a plain attack instead of
+            // casting, while A keeps working -- the known legitimate reason
+            // this happens is AttackNoMana (a skills.txt flag, mostly on
+            // melee-flavoured skills: Bash, Zeal, Frenzy...): when the chosen
+            // skill can't go off right now (no mana, a weapon/class refusal,
+            // ...) it swings Attack instead of refusing outright, same as
+            // game.exe. Logged once every 2s per Fight so a repro's log says
+            // whether that is really what is firing here, and why (status
+            // before the fallback: 1 not enough mana, 2 skill_refused, 4
+            // unused today).
+            static std::uint32_t next_attack_no_mana_log = 0;
+            if (now_ms >= next_attack_no_mana_log) {
+                next_attack_no_mana_log = now_ms + 2000u;
+                const auto mana = actor->character.stats.values[d2d::d2s::kMana];
+                d2d::log::warn("AttackNoMana: skill {} (status {}) swings Attack instead ({} mana)", skill, status, mana);
+            }
             skill = 0;
             status = skill_status(skill, now_ms);
         }
