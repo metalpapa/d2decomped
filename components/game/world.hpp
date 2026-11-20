@@ -209,6 +209,16 @@ struct View {
     d2d::d2s::Stats stats;
     std::vector<d2d::d2s::Item> items;
     std::optional<d2d::d2s::Item> held;
+    // code-puppy-b7f801, 2026-11-20: the Hireling screen's actual worn items,
+    // replicated the same way `items` is. Previously, only `merc_sheet`'s
+    // computed numbers (level, stats, defense, damage, resistances) were
+    // replicated after the initial load -- the client's own
+    // character.merc_items, used purely to draw the panel's icons, was set
+    // once at load and never refreshed. Giving or taking a merc item changed
+    // the numbers (recomputed into merc_sheet every tick) but left the icon
+    // frozen on whatever was last loaded, including a stale icon for an item
+    // already taken back off -- the reported "icon doesn't update" bug.
+    std::vector<d2d::d2s::Item> merc_items;
     std::optional<Store> store;
     std::vector<d2d::rules::MercOffer> hire_offers;
     std::vector<Cues::Cue> sounds;         // the world's sounds cued since the last View

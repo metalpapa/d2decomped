@@ -1642,6 +1642,26 @@ int main(int argc, char** argv) try {
             assert(received.monsters.size() == 1 && received.monsters[0].align == 2 && received.monsters[0].ally_not_interact(*data, world.level->id));
             assert(received.sounds.size() == 1 && received.sounds[0].unit == 0x100000007ull && received.sounds[0].hush);
         }
+        // code-puppy-b7f801, 2026-11-20: the Hireling screen's worn items ride
+        // the View now too (world.hpp's View::merc_items), not just its
+        // computed numbers (merc_sheet) -- previously the client's own copy
+        // only came from the save file at load and never saw a later give/
+        // take, so the icon stuck (the numbers, from merc_sheet, still
+        // updated live). A round trip through the real wire encoding/
+        // decoding should carry them unchanged.
+        if (data->item_tables) {
+            d2d::d2s::Item merc_item;
+            merc_item.code = "cap"; merc_item.identified = true; merc_item.location = d2d::d2s::item_location::kEquipped;
+            merc_item.slot = d2d::d2s::body_location::kHead;
+            attacker.character.merc_items = { merc_item };
+            View shown = world.view();
+            ViewEncoder encoder;
+            View received;
+            assert(apply_view(*data, encode_view(*data, shown, encoder), received));
+            assert(received.merc_items.size() == 1 && received.merc_items[0].code == "cap" && received.merc_items[0].slot == d2d::d2s::body_location::kHead);
+            attacker.character.merc_items.clear();
+            std::printf("OK: the Hireling screen's worn items ride the View (merc_items)\n");
+        }
         world.fight.monsters[std::size_t(index)].cry = {};    // the same monster, hostile: attacked
         world.fight.monsters[std::size_t(index)].align = 0;
         world.tick(attack, (4502 + 2) * kTickMs, (4502 + 1) * kTickMs);

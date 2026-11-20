@@ -295,6 +295,7 @@ inline std::vector<std::uint8_t> encode_view(const GameData& game_data, const Vi
                 for (const auto& perm_code : store.perm) chunk.str(perm_code);
                 for (const auto& tab : store.tabs) wire::items(chunk, tab, *game_data.item_tables);
             }
+            wire::items(chunk, view.merc_items, *game_data.item_tables);   // the Hireling screen's icons (world.hpp's View::merc_items)
         }
         wire::section(out, enc.section[6], std::move(chunk.bytes));
     }
@@ -543,6 +544,7 @@ inline bool apply_view(const GameData& game_data, std::span<const std::uint8_t> 
             store.header = view.header;
             view.store = std::move(store);
         }
+        view.merc_items = wire::items(input, *game_data.item_tables);   // the Hireling screen's icons (world.hpp's View::merc_items)
     });
     body([&] {
         view.hire_offers.clear();

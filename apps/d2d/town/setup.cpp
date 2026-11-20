@@ -77,6 +77,7 @@ auto Town::take_view(std::span<const std::uint8_t> bytes, const View* local) -> 
         character.header = view.header;
         character.header.hotkeys = hotkeys;
         character.stats = view.stats; character.items = view.items;
+        character.merc_items = view.merc_items;   // code-puppy-b7f801, 2026-11-20: keeps the Hireling screen's icons live (world.hpp's View::merc_items)
         // A weapon switch brought the other set's skills: the buttons take them.
         if (int(view.header.weapon_set) != skillbar_set) {
             skillbar.left = int(view.header.left_skill); skillbar.right = int(view.header.right_skill); skillbar.left_item = skillbar.right_item = -1;

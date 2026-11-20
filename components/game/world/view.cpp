@@ -207,6 +207,7 @@ auto World::view() const -> View {
         }
         view.has_character = true;
         view.header = actor->character.header; view.stats = actor->character.stats; view.items = actor->character.items; view.held = actor->held;
+        view.merc_items = actor->character.merc_items;   // the Hireling screen's icons; see world.hpp's comment on this field
         view.hire_offers = hire_offers(act());
         return view;
     }
