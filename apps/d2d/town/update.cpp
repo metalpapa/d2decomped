@@ -627,15 +627,38 @@ auto Town::update(std::vector<std::uint8_t>& framebuffer, const Mouse& frame_mou
                 for (const auto& node : scene->rules.class_skills[std::size_t(std::max(character.character_class, 0))])
                     if (node.page == tree_tab)
                         if (const auto [icon_x, icon_y] = skill_icon_at(node); icon_x > -1000 && mouse.x >= icon_x && mouse.x < icon_x + 0x30 && mouse.y >= icon_y - 0x30 && mouse.y < icon_y) on_skill_icon = true;
+            // code-puppy-b7f801, 2026-11-21: `click.cmd` is truthy for a
+            // plain ToCursor on *any* stored item under the cursor, not
+            // just a usable one. Before this, B over a non-potion item
+            // (reported: the Horadric Cube's own icon, which stays right
+            // under the pad cursor after opening it that way) failed every
+            // branch below and did nothing, instead of closing the panel
+            // like B does everywhere else. `usable` is the one case where
+            // code-puppy-b7f801, 2026-11-21: `click.cmd` is truthy for a
+            // plain ToCursor on *any* stored item under the cursor, not
+            // just a usable one. Before this, B over a non-potion item
+            // (reported: the Horadric Cube's own icon, which stays right
+            // under the pad cursor after opening it that way) failed every
+            // branch below and did nothing, instead of closing the panel
+            // like B does everywhere else. `usable` is the one case where
+            // this click is actually going somewhere (a drinkable/usable
+            // item); only that should block the close. The cube's own icon
+            // while it's still closed is a separate no-op here on purpose:
+            // the dedicated "click the cube to open it" code further below
+            // already handles that click; this just has to not steal it by
+            // closing the inventory first.
+            const bool cube_icon = used != character.items.end() && used->code == "box" && !cube_open;
+            const bool usable = to_cursor && used != character.items.end() && item_use(*used).kind != ItemUseKind::None;
             if (identify_with >= 0) identify_with = -1;                  // a right-click drops the pick
-            else if (pad_playing && !click.cmd && !on_skill_icon && (inv_open || char_open || stash_open || cube_open || tree_open || quest_log.open || hireling.open || party.open))
-                inv_open = char_open = stash_open = cube_open = tree_open = quest_log.open = hireling.open = party.open = false;   // TrimUI: B on nothing closes the panels, as Esc
+            else if (cube_icon) {}   // let the open-the-cube click below run undisturbed
+            else if (pad_playing && !on_skill_icon && !usable && (inv_open || char_open || stash_open || cube_open || tree_open || quest_log.open || hireling.open || party.open))
+                inv_open = char_open = stash_open = cube_open = tree_open = quest_log.open = hireling.open = party.open = false;   // TrimUI: B on nothing (or nothing usable) closes the panels, as Esc
             else if (used != character.items.end() &&
                      (((pad_playing && pad_config.skill_buttons) || touch_enabled) ? item_use(*used).kind == ItemUseKind::Identify : (used->code == "isc" || used->code == "ibk"))) {
                 identify_with = used->id;
                 audio.play_sfx(*scene, d2d::rules::sound_ids::kCursorIdentifyReady, 1.f, 0);
             }
-            else if (to_cursor && ((!(pad_playing && pad_config.skill_buttons) && !touch_enabled) || (used != character.items.end() && item_use(*used).kind != ItemUseKind::None))) net.send(cmd::UseItem{ to_cursor->item });
+            else if (to_cursor && ((!(pad_playing && pad_config.skill_buttons) && !touch_enabled) || usable)) net.send(cmd::UseItem{ to_cursor->item });
         }
         // Quest log (FUN_004a3e40 press, FUN_004a42a0 release): a tab switches
         // on the press; an icon with something to say, close and questlast
