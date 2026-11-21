@@ -104,6 +104,22 @@ struct Scene : GameData {
     // Loaded on first use and kept — decoding every composite up front
     // doubled startup. `mutable` so the const Scene renderers can fill it.
     mutable std::map<std::array<std::uint8_t, 34>, PlayerAnim> composites;
+    // code-puppy-b7f801, 2026-11-20: diagnostic only, see PLAN-MEJORAS.md P1
+    // and gamedata.cpp's approx_level_bytes/manage_art comments. A device log
+    // showed RSS climbing from 330 MB to 693 MB over a long session while
+    // Level structural state (that telemetry) only grew from 28 MB to 38 MB
+    // and the DT1 tile art cache was actively releasing MBs throughout --
+    // ruling both out as the dominant grower. `composites` above is the next
+    // suspect: every distinct unit look (34-byte signature: monster/class +
+    // gear/tint) ever drawn this session stays decoded here forever, no
+    // eviction at all (unlike DT1 art, which this port already releases
+    // under memory pressure and reloads from the MPQ on demand). A session
+    // visiting many distinct monster types across many levels could
+    // plausibly land here. Returns {count, approx total decoded pixel bytes
+    // across every layer/frame/direction currently cached} so a repro's log
+    // says whether this really is where the memory is going before anyone
+    // spends time adding eviction for it.
+    [[nodiscard]] std::pair<std::size_t, std::size_t> composites_footprint() const;
     // Class animations — 7 classes × 5 states, per the RE'd class table at
     // 0x00708a00. State order matches D2's suffix scheme: nu1, nu2, fw,
     // nu3, bw. Class order (rows in the table): assassin, druid, amazon,

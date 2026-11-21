@@ -1970,6 +1970,15 @@ int run_windowed(std::vector<std::uint8_t>& framebuffer,
                                first_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
                                first_line("/sys/class/thermal/thermal_zone0/temp"), first_line("/sys/class/thermal/thermal_zone1/temp"),
                                mem_available, resident, first_line("/proc/loadavg"));
+            // code-puppy-b7f801, 2026-11-20: diagnostic only, see scene.hpp's
+            // comment on Scene::composites_footprint -- the next suspect for
+            // PLAN-MEJORAS.md P1's unexplained RSS growth, now that Level
+            // structural state (gamedata.cpp's "levels resident" line) and
+            // the DT1 tile art cache are both ruled out by prior telemetry.
+            if (town.scene) {
+                const auto [count, bytes] = town.scene->composites_footprint();
+                d2d::log::info("unit composites cached: {} looks, approx {} MB decoded pixels", count, bytes >> 20);
+            }
             stat_frames = 0;      stat_input_max = 0;
             stat_render_sum = 0;  stat_render_max = 0;
             stat_present_sum = 0; stat_present_max = 0;

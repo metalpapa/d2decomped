@@ -42,6 +42,18 @@ const Scene::PlayerAnim& Scene::composite(int d2s_class, int mode, const Appeara
     return found->second;
 }
 
+// code-puppy-b7f801, 2026-11-20: diagnostic only, see scene.hpp's comment on
+// `composites`. Sums every decoded layer's frames' pixel bytes currently held
+// (PlayerAnim::decoded; dcc[] is cleared right after a layer first decodes,
+// so only `decoded` ever holds pixels past that point).
+std::pair<std::size_t, std::size_t> Scene::composites_footprint() const {
+    std::size_t bytes = 0;
+    for (const auto& [key, anim] : composites)
+        for (const auto& layer : anim.decoded)
+            for (const auto& frame : layer.frames()) bytes += frame.pixels.size();
+    return { composites.size(), bytes };
+}
+
 // A monster's or object's animation for a mode, loaded once per COF it names.
 const Scene::PlayerAnim& Scene::npc_anim(const Npc& npc, std::string_view mode) const {
     const std::string mode_text(mode);
