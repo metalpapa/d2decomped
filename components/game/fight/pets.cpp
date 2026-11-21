@@ -618,6 +618,27 @@ auto Fight::pet_think_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const 
         }
         const auto pick = d2d::rules::search_near(nears, 2, need_sight);
         const int found = pick.target >= 0 ? pick.target : pick.second;
+        // code-puppy-b7f801, 2026-11-21: diagnostic only, user report that
+        // ranged pets (Skeletal Mages) go idle in the Arcane Sanctuary's
+        // floating platforms while an enemy there keeps shooting the
+        // player. If nothing was found and sight was required, say why the
+        // nearest otherwise-valid enemy got excluded (in range, hostile,
+        // alive, but `sight_blocked` -- which only runs when `need_sight`,
+        // i.e. this pet's own room counts as indoor). Throttled globally so
+        // a repro's log isn't flooded every tick.
+        if (found < 0 && need_sight) {
+            static std::uint32_t last_log_ms = 0;
+            if (now_ms - last_log_ms >= 2000)
+                for (std::size_t i = 0; i < nears.size(); ++i) {
+                    const auto& entry = nears[i];
+                    if (entry.self || entry.dead || entry.skip || d2d::rules::friends(2, entry.align) || entry.distance > 0x23 || !entry.blocked) continue;
+                    last_log_ms = now_ms;
+                    const auto& other_type = game_data->monsters.types[std::size_t(monsters[i].type)];
+                    d2d::log::info("pet {} idle: {} at distance {} is in range and hostile but sight_blocked (indoor={})",
+                                   type_info.code, other_type.code, entry.distance, indoor);
+                    break;
+                }
+        }
         // The Vines', the AssassinSentry's and the DeathSentry's foe2 is
         // FUN_005ddc30's (FUN_005ec6c0, FUN_005ea3d0, FUN_005ea980 call it);
         // the others' PetUnit::foe2 is the driver's target, the mode 5 foe.
