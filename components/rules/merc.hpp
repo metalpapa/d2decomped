@@ -314,7 +314,26 @@ MercAttack merc_attack(const MercFightView& view, int& chance_growth, int x, int
         // into this branch and may still read false) is the whole point:
         // `view.melee` would otherwise gate `pick`'s own swing check right
         // back into Kind::stand, right back to the same deadlock next think.
-        return use ? pick(true) : MercAttack{ .kind = Kind::stand };
+        //
+        // code-puppy-b7f801, 2026-11-21: that reasoning only holds when the
+        // merc is genuinely already adjacent -- "no closer spot" meaning
+        // "basically touching a big target". `gap` itself can't tell that
+        // apart from genuinely far away: `merc_gap` (above) only subtracts
+        // the *merc's* own size from the raw distance, never the foe's, so
+        // a big monster inflates `gap` even when truly touching it (the
+        // verified test row below has gap 5 while adjacent to one). `view
+        // .distance`, computed from the target-selection sight search
+        // (`near_distance`, which does account for the foe's size), is the
+        // reliable signal instead. Device report: an Act 2 merc on a
+        // staircase, with the nearest enemy clearly far away on screen,
+        // swinging at nothing and getting visibly stuck mid-animation on
+        // the stairs, blocking them for pets trying to pass -- `gap` alone
+        // couldn't have told that case apart from the legitimate one. 15
+        // subtiles (3 tiles) comfortably covers even a huge boss's footprint
+        // plus melee reach while still excluding "foe is somewhere else
+        // entirely, the move just failed".
+        if (view.distance <= 15) return use ? pick(true) : MercAttack{ .kind = Kind::stand };
+        return { .kind = Kind::failed };
     }
     return use ? pick(view.melee) : MercAttack{ .kind = Kind::stand };
 }
