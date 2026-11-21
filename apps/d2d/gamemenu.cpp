@@ -152,9 +152,9 @@ std::string_view fallback_text(std::string_view name, std::string_view lang) {
         { "Gamma", "Gamma", "Gamma" }, { "Contrast", "Contrast", "Contraste" }, { "GameSpeed", "Game Speed", "Velocidad" },
         { "AutoMapMode", "Automap Mode", "Modo automapa" }, { "AutoMapFade", "Automap Fade", "Transp. automapa" },
         { "AutoMapCenter", "Center Automap", "Centrar automapa" }, { "AutoMapParty", "Party on Automap", "Grupo en automapa" },
-        { "AutoMapPartyNames", "Party Names", "Nombres del grupo" }, { "HarderMonsters", "Harder Monsters", "Enemigos mas fuertes" },
+        { "AutoMapPartyNames", "Party Names", "Nombres del grupo" }, { "HarderMonsters", "Harder Monsters", "Enemigos duros" },
         { "MoreMonsters", "More Monsters", "Mas monstruos" },
-        { "ClassLootBias", "Class-Usable Loot", "Botin para mi clase" }, { "LootFilter", "Hide Gold/Potions", "Ocultar oro/pociones" },
+        { "ClassLootBias", "Class-Based Loot", "Botin de mi clase" }, { "LootFilter", "No Gold/Potions", "Sin oro/pociones" },
         { "SmallOff", "Off", "No" }, { "SmallOn", "On", "Si" }, { "AudioOnly", "Audio Only", "Solo audio" },
         { "TextOnly", "Text Only", "Solo texto" }, { "AudioText", "Audio + Text", "Audio + texto" },
         { "Low", "Low", "Baja" }, { "Medium", "Medium", "Media" }, { "High", "High", "Alta" }
