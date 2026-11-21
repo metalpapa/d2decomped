@@ -605,40 +605,37 @@ auto Fight::pet_think_turn(Pet& pet, std::uint32_t now_ms, float elapsed, const 
         const auto* in_room = room >= 0 && std::size_t(room) < level->rooms.size() ? &level->rooms[std::size_t(room)] : nullptr;   // the camp has none
         const bool indoor = in_room && in_room->kind == 2
             && !(std::size_t(in_room->def) < game_data->prest_outdoors.size() && game_data->prest_outdoors[std::size_t(in_room->def)]);
-        const bool need_sight = std::exchange(monster.force_sight, false) || indoor;
+        // code-puppy-b7f801, 2026-11-21: `monster.sighted` mirrors ai.cpp's
+        // own search_target -- an enemy monster only needs one clear
+        // sight_blocked ray; after that it stays "awake" and never
+        // re-checks sight again. A pet's targeting used to require a fresh
+        // clear ray on every single tick, which reliably lost the Arcane
+        // Sanctuary's floating platforms: a visibly close enemy kept
+        // shooting the player while the pet sat idle (owner report,
+        // 2026-11-21). This fork doesn't require matching game.exe
+        // (PLAN-MEJORAS.md's "Project principle"); giving a pet the same
+        // stay-aware leeway its enemies already get is a deliberate
+        // improvement, scoped below so it fades once nothing hostile is
+        // around any more rather than becoming a permanent wallhack.
+        const bool need_sight = std::exchange(monster.force_sight, false) || (indoor && !monster.sighted);
         const int pet_x = sub(unit.x), pet_y = sub(unit.y);
         const auto wall = [&](int at_x, int at_y) { return level->blocked(centre(at_x), centre(at_y), 0x04); };
         std::vector<d2d::rules::NearFoe> nears;
+        bool any_hostile_in_range = false;
         for (const auto& other : monsters) {
             const auto& other_type = game_data->monsters.types[std::size_t(other.type)];
             const int foe_x = sub(other.unit.x), foe_y = sub(other.unit.y);
             auto& entry = nears.emplace_back(d2d::rules::NearFoe{ d2d::rules::near_distance(foe_x - pet_x, foe_y - pet_y, other_type.size), other.align, other_type.threat,
                                                                   false, true, !other.targetable(), town });   // FUN_005dca70: no unit flag 0x4, no target
             entry.blocked = need_sight && entry.distance <= 0x23 && d2d::rules::sight_blocked(foe_x, foe_y, other_type.size, pet_x, pet_y, size, wall);
+            if (!entry.dead && !entry.skip && !d2d::rules::friends(2, entry.align) && entry.distance <= 0x23) any_hostile_in_range = true;
         }
         const auto pick = d2d::rules::search_near(nears, 2, need_sight);
         const int found = pick.target >= 0 ? pick.target : pick.second;
-        // code-puppy-b7f801, 2026-11-21: diagnostic only, user report that
-        // ranged pets (Skeletal Mages) go idle in the Arcane Sanctuary's
-        // floating platforms while an enemy there keeps shooting the
-        // player. If nothing was found and sight was required, say why the
-        // nearest otherwise-valid enemy got excluded (in range, hostile,
-        // alive, but `sight_blocked` -- which only runs when `need_sight`,
-        // i.e. this pet's own room counts as indoor). Throttled globally so
-        // a repro's log isn't flooded every tick.
-        if (found < 0 && need_sight) {
-            static std::uint32_t last_log_ms = 0;
-            if (now_ms - last_log_ms >= 2000)
-                for (std::size_t i = 0; i < nears.size(); ++i) {
-                    const auto& entry = nears[i];
-                    if (entry.self || entry.dead || entry.skip || d2d::rules::friends(2, entry.align) || entry.distance > 0x23 || !entry.blocked) continue;
-                    last_log_ms = now_ms;
-                    const auto& other_type = game_data->monsters.types[std::size_t(monsters[i].type)];
-                    d2d::log::info("pet {} idle: {} at distance {} is in range and hostile but sight_blocked (indoor={})",
-                                   type_info.code, other_type.code, entry.distance, indoor);
-                    break;
-                }
-        }
+        if (found >= 0) {
+            if (!monster.sighted) d2d::log::info("pet {} stays aware of hostiles now (sighted once, like a monster's own AI)", type_info.code);
+            monster.sighted = true;
+        } else if (!any_hostile_in_range) monster.sighted = false;   // the fight moved on: need a fresh clear ray next time
         // The Vines', the AssassinSentry's and the DeathSentry's foe2 is
         // FUN_005ddc30's (FUN_005ec6c0, FUN_005ea3d0, FUN_005ea980 call it);
         // the others' PetUnit::foe2 is the driver's target, the mode 5 foe.
